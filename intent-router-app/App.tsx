@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import './global.css';
 
@@ -86,6 +87,8 @@ const App = () => {
     roomName: '',
     participantId: '',
     participantName: '',
+    participantEmail: '',
+    returnScreen: 'dashboard' as Screen,
     needText: '',
     module: '',
     urgency: 'this week',
@@ -102,7 +105,13 @@ const App = () => {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'community':
-        return <CommunityScreen navigate={navigate} setSessionData={setSessionData} />;
+        return (
+          <CommunityScreen
+            navigate={navigate}
+            sessionData={sessionData}
+            setSessionData={setSessionData}
+          />
+        );
       case 'home':
         return <HomeScreen navigate={navigate} sessionData={sessionData} />;
       case 'intake':
@@ -112,7 +121,7 @@ const App = () => {
       case 'room':
         return <RoomScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'reveal':
-        return <RevealScreen navigate={navigate} />;
+        return <RevealScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'feedback':
         return <FeedbackScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'dashboard':
@@ -133,10 +142,12 @@ const App = () => {
 // ============================================================================
 // SCREEN 0: COMMUNITY SELECT (Entry Point)
 // ============================================================================
-const CommunityScreen = ({ navigate, setSessionData }: any) => {
+const CommunityScreen = ({ navigate, sessionData, setSessionData }: any) => {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [displayName, setDisplayName] = useState(sessionData.participantName || '');
+  const [email, setEmail] = useState(sessionData.participantEmail || '');
 
   React.useEffect(() => {
     let isMounted = true;
@@ -166,6 +177,11 @@ const CommunityScreen = ({ navigate, setSessionData }: any) => {
     };
   }, []);
 
+  React.useEffect(() => {
+    setDisplayName(sessionData.participantName || '');
+    setEmail(sessionData.participantEmail || '');
+  }, [sessionData.participantName, sessionData.participantEmail]);
+
   const handleSelectCommunity = (community: Community) => {
     // Generate session ID
     const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
@@ -174,6 +190,8 @@ const CommunityScreen = ({ navigate, setSessionData }: any) => {
       sessionId,
       selectedCommunityId: community.id,
       selectedCommunity: community.name,
+      participantName: displayName.trim() || prev.participantName || 'Guest',
+      participantEmail: email.trim() || prev.participantEmail || '',
     }));
     navigate('dashboard');
   };
@@ -187,6 +205,41 @@ const CommunityScreen = ({ navigate, setSessionData }: any) => {
           </Text>
           <Text className="text-slate-600">
             Start from a space where your voice can be seen and heard
+          </Text>
+        </View>
+        
+        <View className="bg-white rounded-2xl p-4 border-2 border-slate-100 mb-6">
+          <Text className="text-sm font-semibold text-slate-700 mb-2">Your name</Text>
+          <TextInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            className="bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900 mb-4"
+            placeholder="Guest"
+            placeholderTextColor="#94a3b8"
+          />
+          <Text className="text-sm font-semibold text-slate-700 mb-2">Your email</Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            className="bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900"
+            placeholder="you@example.com"
+            placeholderTextColor="#94a3b8"
+          />
+          <Text className="text-xs text-slate-500 mt-3">
+            Saved as{' '}
+            <Text className="font-semibold text-slate-700">
+              {sessionData.participantName || 'Guest'}
+            </Text>
+            {sessionData.participantEmail ? (
+              <Text className="text-slate-500">
+                {' '}•{' '}
+                <Text className="font-semibold text-slate-700">
+                  {sessionData.participantEmail}
+                </Text>
+              </Text>
+            ) : null}
           </Text>
         </View>
 
@@ -307,6 +360,14 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: any) => {
   return (
     <ScrollView className="flex-1 bg-slate-50">
       <View className="px-6 py-8">
+        <TouchableOpacity
+          onPress={() => navigate(sessionData.returnScreen || 'dashboard')}
+          className="mb-4 flex-row items-center"
+        >
+          <Text className="text-blue-600 text-lg mr-2">←</Text>
+          <Text className="text-blue-600 font-semibold">Back</Text>
+        </TouchableOpacity>
+
         {/* Header */}
         <View className="mb-8">
           <Text className="text-3xl font-bold text-slate-900 mb-2">
@@ -460,7 +521,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: any) => {
 
       const joinResponse = await requestJson(`/rooms/${roomResponse.room.id}/join`, {
         method: 'POST',
-        body: JSON.stringify({ displayName: 'Guest' }),
+        body: JSON.stringify({ displayName: sessionData.participantName || 'Guest' }),
       });
 
       setSessionData((prev: any) => ({
@@ -597,6 +658,10 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
     socket.onmessage = event => {
       try {
         const payload = JSON.parse(event.data);
+        if (payload.type === 'room_history' && payload.roomId === sessionData.roomId) {
+          setMessages(payload.messages || []);
+          return;
+        }
         if (payload.type === 'chat_message' && payload.message?.roomId === sessionData.roomId) {
           setMessages(prev => [...prev, payload.message]);
         }
@@ -625,6 +690,37 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
       socketRef.current = null;
     };
   }, [sessionData.roomId, sessionData.participantId, sessionData.participantName, wsBaseUrl]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') {
+      return;
+    }
+
+    const handlePageExit = () => {
+      if (!sessionData.roomId || !sessionData.participantId) {
+        return;
+      }
+
+      try {
+        fetch(`${API_BASE_URL}/rooms/${sessionData.roomId}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: sessionData.participantId }),
+          keepalive: true,
+        });
+      } catch (error) {
+        // Best-effort on page exit
+      }
+    };
+
+    window.addEventListener('beforeunload', handlePageExit);
+    window.addEventListener('pagehide', handlePageExit);
+
+    return () => {
+      window.removeEventListener('beforeunload', handlePageExit);
+      window.removeEventListener('pagehide', handlePageExit);
+    };
+  }, [sessionData.roomId, sessionData.participantId]);
 
   const sendMessage = () => {
     const trimmed = inputText.trim();
@@ -725,6 +821,9 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
             key={message.id}
             className={`mb-4 ${message.senderId === sessionData.participantId ? 'items-end' : 'items-start'}`}
           >
+            <Text className="text-xs text-slate-500 mb-1 px-1">
+              {message.senderId === sessionData.participantId ? 'You' : message.senderName}
+            </Text>
             <View
               className={`max-w-[75%] px-4 py-3 rounded-2xl ${
                 message.senderId === sessionData.participantId
@@ -860,7 +959,38 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
 // ============================================================================
 // SCREEN 4: MUTUAL REVEAL
 // ============================================================================
-const RevealScreen = ({ navigate }: any) => {
+const RevealScreen = ({ navigate, sessionData, setSessionData }: any) => {
+  const [isEnding, setIsEnding] = useState(false);
+  const [endError, setEndError] = useState('');
+
+  const handleEndSession = async () => {
+    if (!sessionData.roomId || !sessionData.participantId) {
+      navigate('feedback');
+      return;
+    }
+
+    try {
+      setIsEnding(true);
+      setEndError('');
+      await requestJson(`/rooms/${sessionData.roomId}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({ participantId: sessionData.participantId }),
+      });
+      setSessionData((prev: any) => ({
+        ...prev,
+        roomId: '',
+        roomName: '',
+        participantId: '',
+        participantName: '',
+      }));
+      navigate('feedback');
+    } catch (error: any) {
+      setEndError('Unable to end the session.');
+    } finally {
+      setIsEnding(false);
+    }
+  };
+
   return (
     <View className="flex-1 bg-slate-50 justify-center px-6">
       <View className="items-center mb-8">
@@ -904,7 +1034,7 @@ const RevealScreen = ({ navigate }: any) => {
       </View>
 
       <TouchableOpacity
-        onPress={() => navigate('feedback')}
+        onPress={() => navigate('room')}
         className="bg-blue-600 py-5 rounded-xl mb-3"
       >
         <Text className="text-white text-center text-lg font-bold">
@@ -913,13 +1043,18 @@ const RevealScreen = ({ navigate }: any) => {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => navigate('feedback')}
+        onPress={handleEndSession}
+        disabled={isEnding}
         className="py-3"
       >
         <Text className="text-slate-500 text-center font-medium">
-          End Session
+          {isEnding ? 'Ending session...' : 'End Session'}
         </Text>
       </TouchableOpacity>
+
+      {endError ? (
+        <Text className="text-red-600 text-center text-sm mt-3">{endError}</Text>
+      ) : null}
     </View>
   );
 };
@@ -1038,7 +1173,7 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [newRoomName, setNewRoomName] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(sessionData.participantName || '');
   const [isCreating, setIsCreating] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -1306,7 +1441,11 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
         {/* Actions */}
         <TouchableOpacity
           onPress={() => {
-            setSessionData((prev: any) => ({ ...prev, userRole: 'seeking' }));
+            setSessionData((prev: any) => ({
+              ...prev,
+              userRole: 'seeking',
+              returnScreen: 'dashboard',
+            }));
             navigate('intake');
           }}
           className="bg-blue-600 py-5 rounded-xl mb-3"

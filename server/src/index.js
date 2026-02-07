@@ -147,6 +147,7 @@ app.post('/rooms', (req, res) => {
     name: typeof name === 'string' && name.trim() ? name.trim() : 'New Room',
     createdAt: new Date().toISOString(),
     participants: new Map(),
+    messages: [],
   };
 
   rooms.set(roomId, room);
@@ -241,6 +242,13 @@ wss.on('connection', socket => {
       socket.participantId = payload.participantId || '';
       socket.displayName = payload.displayName || 'Guest';
       addSocketToRoom(payload.roomId, socket);
+      socket.send(
+        JSON.stringify({
+          type: 'room_history',
+          roomId: payload.roomId,
+          messages: room.messages,
+        })
+      );
       return;
     }
 
@@ -268,6 +276,10 @@ wss.on('connection', socket => {
         text,
         createdAt: new Date().toISOString(),
       };
+      room.messages.push(message);
+      if (room.messages.length > 200) {
+        room.messages = room.messages.slice(-200);
+      }
       broadcastToRoom(roomId, { type: 'chat_message', message });
     }
   });
