@@ -53,7 +53,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
         const score = Number(matchResult?.score);
         const normalizedSimilarity = Number.isFinite(score)
           ? Math.max(0, Math.min(99, Math.round(score)))
-          : 72;
+          : 0;
 
         setSessionData(prev => ({
           ...prev,

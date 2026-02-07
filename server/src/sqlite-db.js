@@ -45,6 +45,15 @@ function initSchema(database) {
   `);
 
   database.exec(`
+    CREATE TABLE IF NOT EXISTS Communities (
+      community_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      members INTEGER DEFAULT 0,
+      theme TEXT
+    );
+  `);
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS Rooms (
       room_id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -179,4 +188,50 @@ export function ensureInternalUserId(externalUserId) {
     .run(externalId, userId);
 
   return userId;
+}
+
+export function listCommunities() {
+  const database = getSqliteDatabase();
+  return database
+    .prepare("SELECT community_id, name, members, theme FROM Communities ORDER BY name ASC")
+    .all();
+}
+
+export function getCommunityById(communityId) {
+  const database = getSqliteDatabase();
+  return (
+    database
+      .prepare("SELECT community_id, name, members, theme FROM Communities WHERE community_id = ?")
+      .get(String(communityId || "").trim()) || null
+  );
+}
+
+export function upsertCommunities(communities) {
+  const database = getSqliteDatabase();
+  const rows = Array.isArray(communities) ? communities : [];
+  if (rows.length === 0) return 0;
+
+  const stmt = database.prepare(
+    `INSERT INTO Communities (community_id, name, members, theme)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(community_id) DO UPDATE SET
+       name = excluded.name,
+       members = excluded.members,
+       theme = excluded.theme`
+  );
+
+  for (const row of rows) {
+    const id = String(row?.community_id || row?.id || "").trim();
+    const name = String(row?.name || "").trim();
+    if (!id || !name) continue;
+
+    stmt.run(
+      id,
+      name,
+      Number.isFinite(Number(row?.members)) ? Number(row.members) : 0,
+      String(row?.theme || "").trim() || null
+    );
+  }
+
+  return rows.length;
 }

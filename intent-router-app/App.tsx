@@ -28,8 +28,8 @@ const App = () => {
     urgency: 'this week',
     matchTopic: '',
     similarity: 0,
-    userAnimal: 'Blue Fox',
-    peerAnimal: 'Green Pine',
+    userAnimal: '',
+    peerAnimal: '',
     userRole: 'seeking' as 'seeking' | 'helping',
     wasHelpful: null as boolean | null,
   });

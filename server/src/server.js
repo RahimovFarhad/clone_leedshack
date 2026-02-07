@@ -5,6 +5,7 @@ import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
 import { classifyIntent } from "./agent.js";
 import { ALLOWED_CATEGORIES, ALLOWED_TAGS, ALLOWED_MODES, LOCATION_TAGS } from "./config.js";
+import { getCommunityById, listCommunities } from "./sqlite-db.js";
 import {
   attachRequestToRoom,
   createDirectRoom,
@@ -17,13 +18,6 @@ import {
 import { isGoodMatch, pickBestMatch } from "./matchmaking.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
-
-const communities = [
-  { id: "c1", name: "Computer Science Club", members: 248, theme: "bg-blue-500" },
-  { id: "c2", name: "Design & Creators", members: 143, theme: "bg-emerald-500" },
-  { id: "c3", name: "First-Year Study Circle", members: 319, theme: "bg-amber-500" },
-  { id: "c4", name: "Hack Nights Community", members: 97, theme: "bg-rose-500" }
-];
 
 const rooms = new Map();
 const roomSockets = new Map();
@@ -67,8 +61,8 @@ function inferLocationTagFromText(text) {
 
 function normalizeCommunityId(value) {
   const candidate = String(value || "").trim();
-  if (!candidate) return "c1";
-  return communities.some((community) => community.id === candidate) ? candidate : "c1";
+  if (!candidate) return "";
+  return getCommunityById(candidate) ? candidate : "";
 }
 
 function ensureRealtimeRoom({ roomId, communityId, roomName }) {
@@ -81,7 +75,7 @@ function ensureRealtimeRoom({ roomId, communityId, roomName }) {
 
   const room = {
     id: normalizedRoomId,
-    communityId: normalizeCommunityId(communityId),
+    communityId: normalizeCommunityId(communityId) || "unassigned",
     name: String(roomName || "Community Room").trim() || "Community Room",
     createdAt: new Date().toISOString(),
     participants: new Map(),
@@ -175,6 +169,16 @@ const serializeCommunity = (community) => {
     rooms: activeRooms.length
   };
 };
+
+const getSerializedCommunities = () =>
+  listCommunities().map((community) =>
+    serializeCommunity({
+      id: String(community.community_id),
+      name: String(community.name),
+      members: Number(community.members || 0),
+      theme: String(community.theme || "")
+    })
+  );
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", ok: true, service: "intent-router-server" });
@@ -377,13 +381,12 @@ app.post("/post-request", async (req, res) => {
 });
 
 app.get("/communities", (_req, res) => {
-  res.json({ communities: communities.map(serializeCommunity) });
+  res.json({ communities: getSerializedCommunities() });
 });
 
 app.get("/communities/:communityId/rooms", (req, res) => {
   const { communityId } = req.params;
-  const community = communities.find((item) => item.id === communityId);
-  if (!community) {
+  if (!getCommunityById(communityId)) {
     return res.status(404).json({ error: "Community not found" });
   }
 
@@ -396,8 +399,7 @@ app.get("/communities/:communityId/rooms", (req, res) => {
 
 app.post("/rooms", (req, res) => {
   const { communityId, name } = req.body || {};
-  const community = communities.find((item) => item.id === communityId);
-  if (!community) {
+  if (!getCommunityById(communityId)) {
     return res.status(400).json({ error: "Invalid communityId" });
   }
 
@@ -479,7 +481,7 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (socket) => {
   const snapshot = {
     type: "snapshot",
-    communities: communities.map(serializeCommunity),
+    communities: getSerializedCommunities(),
     rooms: Array.from(rooms.values()).map(serializeRoom)
   };
   socket.send(JSON.stringify(snapshot));

@@ -153,6 +153,17 @@ const CommunityScreen = ({ navigate, sessionData, setSessionData }: CommunityScr
               </View>
             </TouchableOpacity>
           ))}
+
+          {!isLoading && !loadError && communities.length === 0 ? (
+            <View className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <Text className="text-amber-800 font-semibold">
+                No communities found in database.
+              </Text>
+              <Text className="text-amber-700 text-sm mt-1">
+                Add rows to the `Communities` table, then reload this screen.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View className="bg-blue-50 border border-blue-200 rounded-xl p-4">

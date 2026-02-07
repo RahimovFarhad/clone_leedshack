@@ -19,6 +19,7 @@ Default base URL: `http://localhost:4000`
 - Default backend flow storage is SQLite (`DB_PROVIDER=sqlite`) at `data/data.db`.
 - Initialize/upgrade schema: `npm run db:init`
 - Insert sample users (translated from your Python script): `npm run db:seed:users`
+- Seed communities for frontend: `npm run db:seed:communities`
 - Optional providers:
   - `DB_PROVIDER=mongo` (uses `MONGODB_URI`)
   - `DB_PROVIDER=memory` (in-memory only)

@@ -183,20 +183,9 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
             : 'You are receiving support from a matched peer.'}
         </Text>
 
-        <View className="flex-row items-center gap-4">
-          <View className="flex-row items-center">
-            <View className="w-8 h-8 bg-blue-500 rounded-full mr-2" />
-            <Text className="text-sm text-slate-700">
-              You are: <Text className="font-semibold">{sessionData.userAnimal}</Text>
-            </Text>
-          </View>
-          <View className="flex-row items-center">
-            <View className="w-8 h-8 bg-green-500 rounded-full mr-2" />
-            <Text className="text-sm text-slate-700">
-              Peer: <Text className="font-semibold">{sessionData.peerAnimal}</Text>
-            </Text>
-          </View>
-        </View>
+        <Text className="text-sm text-slate-600">
+          Participant: <Text className="font-semibold text-slate-800">{sessionData.participantName || 'Guest'}</Text>
+        </Text>
       </View>
 
       {/* Messages */}

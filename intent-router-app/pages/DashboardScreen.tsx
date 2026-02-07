@@ -177,12 +177,16 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
             <Text className="text-3xl font-bold text-green-600">{rooms.reduce((count, room) => count + room.participants.length, 0)}</Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-purple-100">
-            <Text className="text-sm text-slate-600 mb-1">You Helped This Week</Text>
-            <Text className="text-3xl font-bold text-purple-600">4</Text>
+            <Text className="text-sm text-slate-600 mb-1">Open Spots</Text>
+            <Text className="text-3xl font-bold text-purple-600">
+              {rooms.reduce((count, room) => count + Math.max(0, 2 - room.participants.length), 0)}
+            </Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-orange-100">
-            <Text className="text-sm text-slate-600 mb-1">Your Sessions</Text>
-            <Text className="text-3xl font-bold text-orange-600">9</Text>
+            <Text className="text-sm text-slate-600 mb-1">Your Current Room</Text>
+            <Text className="text-xl font-bold text-orange-600">
+              {sessionData.roomId ? '1' : '0'}
+            </Text>
           </View>
         </View>
 
