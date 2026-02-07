@@ -11,6 +11,51 @@ import {
 } from 'react-native';
 import './global.css';
 
+type Community = {
+  id: string;
+  name: string;
+  members: number;
+  rooms?: number;
+  activeRooms?: number;
+  theme?: string;
+};
+
+type Room = {
+  id: string;
+  communityId: string;
+  name: string;
+  createdAt: string;
+  participants: Array<{
+    id: string;
+    displayName: string;
+    joinedAt: string;
+  }>;
+};
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://scaling-cod-g4pr9vpgqj4c9pxg-4000.app.github.dev';
+
+const requestJson = async (path: string, options: RequestInit = {}) => {
+  const headers: Record<string, string> = {
+    ...(options.headers || {}),
+  };
+
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed with ${response.status}`);
+  }
+
+  return response.json();
+};
+
 // Navigation State Management
 type Screen = 
   | 'community'
@@ -26,7 +71,11 @@ const App = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('community');
   const [sessionData, setSessionData] = useState({
     sessionId: '',
+    selectedCommunityId: '',
     selectedCommunity: '',
+    roomId: '',
+    roomName: '',
+    participantId: '',
     needText: '',
     module: '',
     urgency: 'this week',
@@ -49,9 +98,9 @@ const App = () => {
       case 'intake':
         return <IntakeScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'matching':
-        return <MatchingScreen navigate={navigate} sessionData={sessionData} />;
+        return <MatchingScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'room':
-        return <RoomScreen navigate={navigate} sessionData={sessionData} />;
+        return <RoomScreen navigate={navigate} sessionData={sessionData} setSessionData={setSessionData} />;
       case 'reveal':
         return <RevealScreen navigate={navigate} />;
       case 'feedback':
@@ -75,20 +124,46 @@ const App = () => {
 // SCREEN 0: COMMUNITY SELECT (Entry Point)
 // ============================================================================
 const CommunityScreen = ({ navigate, setSessionData }: any) => {
-  const communities = [
-    { id: 'c1', name: 'Computer Science Club', members: 248, rooms: 12, theme: 'bg-blue-500' },
-    { id: 'c2', name: 'Design & Creators', members: 143, rooms: 6, theme: 'bg-emerald-500' },
-    { id: 'c3', name: 'First-Year Study Circle', members: 319, rooms: 18, theme: 'bg-amber-500' },
-    { id: 'c4', name: 'Hack Nights Community', members: 97, rooms: 4, theme: 'bg-rose-500' },
-  ];
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const handleSelectCommunity = (communityName: string) => {
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const loadCommunities = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError('');
+        const data = await requestJson('/communities');
+        if (isMounted) {
+          setCommunities(data.communities || []);
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          setLoadError('Unable to load communities.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadCommunities();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelectCommunity = (community: Community) => {
     // Generate session ID
     const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
     setSessionData((prev: any) => ({
       ...prev,
       sessionId,
-      selectedCommunity: communityName,
+      selectedCommunityId: community.id,
+      selectedCommunity: community.name,
     }));
     navigate('dashboard');
   };
@@ -106,14 +181,27 @@ const CommunityScreen = ({ navigate, setSessionData }: any) => {
         </View>
 
         <View className="gap-3 mb-8">
-          {communities.map(community => (
+          {isLoading && (
+            <View className="py-8 items-center">
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text className="text-slate-500 mt-3">Loading communities...</Text>
+            </View>
+          )}
+
+          {!isLoading && loadError ? (
+            <View className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <Text className="text-red-700 font-semibold">{loadError}</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && !loadError && communities.map(community => (
             <TouchableOpacity
               key={community.id}
-              onPress={() => handleSelectCommunity(community.name)}
+              onPress={() => handleSelectCommunity(community)}
               className="bg-white rounded-2xl p-4 border-2 border-slate-100"
             >
               <View className="flex-row items-center">
-                <View className={`w-11 h-11 rounded-xl ${community.theme} items-center justify-center mr-3`}>
+                <View className={`w-11 h-11 rounded-xl ${community.theme || 'bg-blue-500'} items-center justify-center mr-3`}>
                   <Text className="text-white text-lg">🏘️</Text>
                 </View>
                 <View className="flex-1">
@@ -121,7 +209,7 @@ const CommunityScreen = ({ navigate, setSessionData }: any) => {
                     {community.name}
                   </Text>
                   <Text className="text-slate-600 text-sm">
-                    {community.members} members • {community.rooms} active rooms
+                    {community.members} members • {community.rooms ?? community.activeRooms ?? 0} active rooms
                   </Text>
                 </View>
                 <Text className="text-slate-400 text-xl">›</Text>
@@ -315,8 +403,10 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: any) => {
 // ============================================================================
 // SCREEN 2: MATCHING (AI Explainability - THE KEY MOMENT)
 // ============================================================================
-const MatchingScreen = ({ navigate, sessionData }: any) => {
+const MatchingScreen = ({ navigate, sessionData, setSessionData }: any) => {
   const [isLoading, setIsLoading] = useState(true);
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
 
   React.useEffect(() => {
     // Simulate AI matching
@@ -339,6 +429,43 @@ const MatchingScreen = ({ navigate, sessionData }: any) => {
       </View>
     );
   }
+
+  const handleJoinCommunityRoom = async () => {
+    if (!sessionData.selectedCommunityId) {
+      setJoinError('Select a community first.');
+      return;
+    }
+
+    try {
+      setIsJoining(true);
+      setJoinError('');
+      const roomName = sessionData.matchTopic || 'New Room';
+      const roomResponse = await requestJson('/rooms', {
+        method: 'POST',
+        body: JSON.stringify({
+          communityId: sessionData.selectedCommunityId,
+          name: roomName,
+        }),
+      });
+
+      const joinResponse = await requestJson(`/rooms/${roomResponse.room.id}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ displayName: 'Guest' }),
+      });
+
+      setSessionData((prev: any) => ({
+        ...prev,
+        roomId: roomResponse.room.id,
+        roomName: roomResponse.room.name,
+        participantId: joinResponse.participant.id,
+      }));
+      navigate('room');
+    } catch (error: any) {
+      setJoinError('Unable to create the room.');
+    } finally {
+      setIsJoining(false);
+    }
+  };
 
   return (
     <View className="flex-1 bg-slate-50 justify-center px-6">
@@ -395,13 +522,20 @@ const MatchingScreen = ({ navigate, sessionData }: any) => {
 
       {/* CTA */}
       <TouchableOpacity
-        onPress={() => navigate('room')}
-        className="bg-blue-600 py-5 rounded-xl"
+        onPress={handleJoinCommunityRoom}
+        disabled={isJoining}
+        className={`py-5 rounded-xl ${isJoining ? 'bg-blue-300' : 'bg-blue-600'}`}
       >
         <Text className="text-white text-center text-lg font-bold">
-          Join Community Room
+          {isJoining ? 'Joining...' : 'Join Community Room'}
         </Text>
       </TouchableOpacity>
+
+      {joinError ? (
+        <Text className="text-red-600 text-center text-sm mt-3">
+          {joinError}
+        </Text>
+      ) : null}
 
       <TouchableOpacity
         onPress={() => navigate('intake')}
@@ -418,7 +552,7 @@ const MatchingScreen = ({ navigate, sessionData }: any) => {
 // ============================================================================
 // SCREEN 3: ANONYMOUS ROOM
 // ============================================================================
-const RoomScreen = ({ navigate, sessionData }: any) => {
+const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
   const [messages, setMessages] = useState(
     sessionData.userRole === 'helping'
       ? [
@@ -434,6 +568,8 @@ const RoomScreen = ({ navigate, sessionData }: any) => {
   );
   const [inputText, setInputText] = useState('');
   const [showReport, setShowReport] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
 
   const sendMessage = () => {
     if (inputText.trim()) {
@@ -442,6 +578,33 @@ const RoomScreen = ({ navigate, sessionData }: any) => {
         { id: messages.length + 1, sender: 'me', text: inputText, time: 'Now' },
       ]);
       setInputText('');
+    }
+  };
+
+  const handleLeaveRoom = async () => {
+    if (!sessionData.roomId || !sessionData.participantId) {
+      navigate('feedback');
+      return;
+    }
+
+    try {
+      setIsLeaving(true);
+      setLeaveError('');
+      await requestJson(`/rooms/${sessionData.roomId}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({ participantId: sessionData.participantId }),
+      });
+      setSessionData((prev: any) => ({
+        ...prev,
+        roomId: '',
+        roomName: '',
+        participantId: '',
+      }));
+      navigate('feedback');
+    } catch (error: any) {
+      setLeaveError('Unable to leave the room.');
+    } finally {
+      setIsLeaving(false);
     }
   };
 
@@ -454,7 +617,7 @@ const RoomScreen = ({ navigate, sessionData }: any) => {
         </Text>
         <Text className="text-xs text-slate-500 mb-1">Room topic</Text>
         <Text className="text-xl font-bold text-slate-900 mb-3">
-          {sessionData.matchTopic.split(',')[0]} — {sessionData.module}
+          {sessionData.roomName || (sessionData.matchTopic ? sessionData.matchTopic.split(',')[0] : 'Room')} — {sessionData.module}
         </Text>
         <Text className="text-slate-600 text-sm mb-3">
           {sessionData.userRole === 'helping'
@@ -519,11 +682,14 @@ const RoomScreen = ({ navigate, sessionData }: any) => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => navigate('feedback')}
-            className="flex-1 bg-slate-50 py-3 rounded-lg border border-slate-200"
+            onPress={handleLeaveRoom}
+            disabled={isLeaving}
+            className={`flex-1 py-3 rounded-lg border ${
+              isLeaving ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'
+            }`}
           >
             <Text className="text-slate-700 text-center font-semibold text-sm">
-              Leave Room
+              {isLeaving ? 'Leaving...' : 'Leave Room'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -553,6 +719,12 @@ const RoomScreen = ({ navigate, sessionData }: any) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {leaveError ? (
+        <View className="px-6 pb-3">
+          <Text className="text-red-600 text-sm text-center">{leaveError}</Text>
+        </View>
+      ) : null}
 
       {/* Report Modal */}
       {showReport && (
@@ -779,26 +951,134 @@ const FeedbackScreen = ({ navigate, sessionData, setSessionData }: any) => {
 // SCREEN 6: DASHBOARD (PwC Scoring Screen - Community Insights)
 // ============================================================================
 const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
-  const activeRooms = [
-    { id: 'r1', topic: 'Recursion debug clinic', module: 'CS101', people: 8, needsHelpers: true },
-    { id: 'r2', topic: 'Calculus derivatives sprint', module: 'MATH201', people: 5, needsHelpers: false },
-    { id: 'r3', topic: 'Lab report peer review', module: 'CHEM151', people: 6, needsHelpers: true },
-  ];
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [newRoomName, setNewRoomName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [actionError, setActionError] = useState('');
 
-  const askQueue = [
-    { id: 'q1', title: 'Need help with base case logic', module: 'CS101', waiting: '2 min' },
-    { id: 'q2', title: 'Quick check before quiz', module: 'PHYS102', waiting: '5 min' },
-  ];
+  const communityId = sessionData.selectedCommunityId;
+  const wsBaseUrl = API_BASE_URL.startsWith('https')
+    ? API_BASE_URL.replace('https', 'wss')
+    : API_BASE_URL.replace('http', 'ws');
 
-  const handleHelpNow = (room: any) => {
-    setSessionData((prev: any) => ({
-      ...prev,
-      module: room.module,
-      matchTopic: room.topic,
-      userRole: 'helping',
-      peerAnimal: 'Amber Owl',
-    }));
-    navigate('room');
+  const loadRooms = async () => {
+    if (!communityId) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setLoadError('');
+      const data = await requestJson(`/communities/${communityId}/rooms`);
+      setRooms(data.rooms || []);
+    } catch (error: any) {
+      setLoadError('Unable to load rooms.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadRooms();
+  }, [communityId]);
+
+  React.useEffect(() => {
+    if (!communityId) {
+      return;
+    }
+
+    const socket = new WebSocket(`${wsBaseUrl}/ws`);
+
+    socket.onmessage = event => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'snapshot') {
+          const snapshotRooms = (payload.rooms || []).filter(
+            (room: Room) => room.communityId === communityId
+          );
+          setRooms(snapshotRooms);
+          return;
+        }
+
+        if (payload.type === 'room_created' || payload.type === 'room_updated') {
+          if (payload.room?.communityId !== communityId) {
+            return;
+          }
+          setRooms(prev => {
+            const index = prev.findIndex(room => room.id === payload.room.id);
+            if (index === -1) {
+              return [...prev, payload.room];
+            }
+            const next = [...prev];
+            next[index] = payload.room;
+            return next;
+          });
+        }
+
+        if (payload.type === 'room_deleted') {
+          setRooms(prev => prev.filter(room => room.id !== payload.roomId));
+        }
+      } catch (error) {
+        // Ignore invalid websocket payloads
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [communityId, wsBaseUrl]);
+
+  const handleCreateRoom = async () => {
+    if (!communityId) {
+      setActionError('Select a community first.');
+      return;
+    }
+
+    const trimmedName = newRoomName.trim();
+    if (!trimmedName) {
+      setActionError('Enter a room name.');
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      setActionError('');
+      await requestJson('/rooms', {
+        method: 'POST',
+        body: JSON.stringify({ communityId, name: trimmedName }),
+      });
+      setNewRoomName('');
+    } catch (error: any) {
+      setActionError('Unable to create room.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleJoinRoom = async (room: Room, role: 'seeking' | 'helping') => {
+    try {
+      setActionError('');
+      const payload = displayName.trim() ? { displayName: displayName.trim() } : {};
+      const data = await requestJson(`/rooms/${room.id}/join`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      setSessionData((prev: any) => ({
+        ...prev,
+        roomId: room.id,
+        roomName: room.name,
+        participantId: data.participant.id,
+        matchTopic: room.name,
+        userRole: role,
+      }));
+      navigate('room');
+    } catch (error: any) {
+      setActionError('Unable to join the room.');
+    }
   };
 
   return (
@@ -821,11 +1101,11 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
         <View className="flex-row flex-wrap gap-3 mb-6">
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-blue-100">
             <Text className="text-sm text-slate-600 mb-1">Active Rooms</Text>
-            <Text className="text-3xl font-bold text-blue-600">{activeRooms.length}</Text>
+            <Text className="text-3xl font-bold text-blue-600">{rooms.length}</Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-green-100">
             <Text className="text-sm text-slate-600 mb-1">People Waiting</Text>
-            <Text className="text-3xl font-bold text-green-600">{askQueue.length}</Text>
+            <Text className="text-3xl font-bold text-green-600">{rooms.reduce((count, room) => count + room.participants.length, 0)}</Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-purple-100">
             <Text className="text-sm text-slate-600 mb-1">You Helped This Week</Text>
@@ -842,52 +1122,98 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
           <Text className="text-lg font-bold text-slate-900 mb-4">
             Rooms Active Right Now
           </Text>
-          {activeRooms.map(room => (
+
+          <View className="mb-4">
+            <Text className="text-sm text-slate-600 mb-2">Create a new room</Text>
+            <View className="flex-row gap-2">
+              <TextInput
+                value={newRoomName}
+                onChangeText={setNewRoomName}
+                className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900"
+                placeholder="e.g. CS101 study session"
+                placeholderTextColor="#94a3b8"
+              />
+              <TouchableOpacity
+                onPress={handleCreateRoom}
+                disabled={isCreating}
+                className={`px-4 rounded-xl items-center justify-center ${isCreating ? 'bg-blue-300' : 'bg-blue-600'}`}
+              >
+                <Text className="text-white font-semibold">
+                  {isCreating ? 'Creating' : 'Create'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-sm text-slate-600 mb-2">Display name (optional)</Text>
+            <TextInput
+              value={displayName}
+              onChangeText={setDisplayName}
+              className="bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900"
+              placeholder="Guest"
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+
+          {actionError ? (
+            <Text className="text-red-600 text-sm mb-3">{actionError}</Text>
+          ) : null}
+
+          {isLoading ? (
+            <View className="py-6 items-center">
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text className="text-slate-500 mt-3">Loading rooms...</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && loadError ? (
+            <View className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <Text className="text-red-700 font-semibold">{loadError}</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && !loadError && rooms.length === 0 ? (
+            <View className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <Text className="text-slate-600">No active rooms yet. Create one above.</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && !loadError && rooms.map(room => (
             <View key={room.id} className="mb-4 last:mb-0 bg-slate-50 rounded-xl p-4 border border-slate-200">
               <View className="flex-row justify-between items-center mb-3">
                 <View className="flex-1 pr-3">
                   <Text className="text-slate-900 font-bold">
-                    {room.topic}
+                    {room.name}
                   </Text>
                   <Text className="text-slate-600 text-sm">
-                    {room.module} • {room.people} participants
+                    {room.participants.length} participant{room.participants.length === 1 ? '' : 's'}
                   </Text>
                 </View>
-                {room.needsHelpers && (
+                {room.participants.length < 2 && (
                   <View className="bg-amber-100 px-2 py-1 rounded-full">
                     <Text className="text-amber-700 text-xs font-semibold">Needs helpers</Text>
                   </View>
                 )}
               </View>
-              <TouchableOpacity
-                onPress={() => handleHelpNow(room)}
-                className="bg-emerald-600 py-2.5 rounded-lg"
-              >
-                <Text className="text-white text-center font-semibold">
-                  Help in this room
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-
-        {/* People currently waiting */}
-        <View className="bg-white rounded-2xl p-6 mb-6 border-2 border-slate-100">
-          <Text className="text-lg font-bold text-slate-900 mb-4">
-            People Waiting For Help
-          </Text>
-          {askQueue.map(item => (
-            <View key={item.id} className="mb-3 last:mb-0 flex-row items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <View className="flex-1 pr-2">
-                <Text className="text-slate-900 font-medium">{item.title}</Text>
-                <Text className="text-slate-600 text-sm">{item.module} • waiting {item.waiting}</Text>
+              <View className="flex-row gap-2">
+                <TouchableOpacity
+                  onPress={() => handleJoinRoom(room, 'helping')}
+                  className="flex-1 bg-emerald-600 py-2.5 rounded-lg"
+                >
+                  <Text className="text-white text-center font-semibold">
+                    Help in this room
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleJoinRoom(room, 'seeking')}
+                  className="flex-1 bg-blue-600 py-2.5 rounded-lg"
+                >
+                  <Text className="text-white text-center font-semibold">
+                    Join room
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => handleHelpNow({ topic: item.title, module: item.module })}
-                className="bg-emerald-100 px-3 py-2 rounded-lg border border-emerald-300"
-              >
-                <Text className="text-emerald-700 font-semibold text-sm">Join</Text>
-              </TouchableOpacity>
             </View>
           ))}
         </View>
