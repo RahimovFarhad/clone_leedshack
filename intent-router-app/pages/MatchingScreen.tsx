@@ -13,14 +13,80 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
   const [isLoading, setIsLoading] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const [matchingError, setMatchingError] = useState('');
+  const [matchMessage, setMatchMessage] = useState('');
 
   React.useEffect(() => {
-    // Simulate AI matching
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
+    let isMounted = true;
+
+    const runMatching = async () => {
+      if (!sessionData.needText?.trim()) {
+        if (isMounted) {
+          setMatchingError('Please submit your request details first.');
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setMatchingError('');
+        const userId =
+          sessionData.participantEmail?.trim() ||
+          sessionData.sessionId ||
+          sessionData.participantName?.trim() ||
+          'anonymous';
+
+        const text = sessionData.module && sessionData.module !== 'General'
+          ? `${sessionData.needText}. Module/subject: ${sessionData.module}`
+          : sessionData.needText;
+
+        const matchResult = await requestJson('/post-request', {
+          method: 'POST',
+          headers: { 'x-user-id': userId },
+          body: JSON.stringify({
+            text,
+            urgency: sessionData.urgency || 'this week',
+            communityId: sessionData.selectedCommunityId,
+          }),
+        });
+
+        const score = Number(matchResult?.score);
+        const normalizedSimilarity = Number.isFinite(score)
+          ? Math.max(0, Math.min(99, Math.round(score)))
+          : 72;
+
+        setSessionData(prev => ({
+          ...prev,
+          roomId: String(matchResult?.room_id || ''),
+          roomName: prev.matchTopic || 'Community Room',
+          similarity: normalizedSimilarity,
+          matchTopic: prev.matchTopic || text,
+        }));
+        setMatchMessage(String(matchResult?.message || '').trim());
+      } catch (error: any) {
+        if (isMounted) {
+          setMatchingError('Unable to complete backend matching. You can still open a room.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    runMatching();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    sessionData.needText,
+    sessionData.module,
+    sessionData.urgency,
+    sessionData.participantEmail,
+    sessionData.participantName,
+    sessionData.sessionId,
+    setSessionData,
+  ]);
 
   if (isLoading) {
     return (
@@ -45,24 +111,31 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
     try {
       setIsJoining(true);
       setJoinError('');
-      const roomName = sessionData.matchTopic || 'New Room';
-      const roomResponse = await requestJson('/rooms', {
-        method: 'POST',
-        body: JSON.stringify({
-          communityId: sessionData.selectedCommunityId,
-          name: roomName,
-        }),
-      });
+      let targetRoomId = String(sessionData.roomId || '').trim();
+      let targetRoomName = sessionData.roomName || sessionData.matchTopic || 'Community Room';
 
-      const joinResponse = await requestJson(`/rooms/${roomResponse.room.id}/join`, {
+      if (!targetRoomId) {
+        const roomName = sessionData.matchTopic || 'New Room';
+        const roomResponse = await requestJson('/rooms', {
+          method: 'POST',
+          body: JSON.stringify({
+            communityId: sessionData.selectedCommunityId,
+            name: roomName,
+          }),
+        });
+        targetRoomId = roomResponse.room.id;
+        targetRoomName = roomResponse.room.name;
+      }
+
+      const joinResponse = await requestJson(`/rooms/${targetRoomId}/join`, {
         method: 'POST',
         body: JSON.stringify({ displayName: sessionData.participantName || 'Guest' }),
       });
 
       setSessionData(prev => ({
         ...prev,
-        roomId: roomResponse.room.id,
-        roomName: roomResponse.room.name,
+        roomId: targetRoomId,
+        roomName: targetRoomName,
         participantId: joinResponse.participant.id,
         participantName: joinResponse.participant.displayName || 'Guest',
       }));
@@ -141,6 +214,18 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
       {joinError ? (
         <Text className="text-red-600 text-center text-sm mt-3">
           {joinError}
+        </Text>
+      ) : null}
+
+      {matchingError ? (
+        <Text className="text-amber-700 text-center text-sm mt-3">
+          {matchingError}
+        </Text>
+      ) : null}
+
+      {matchMessage ? (
+        <Text className="text-blue-700 text-center text-sm mt-3">
+          {matchMessage}
         </Text>
       ) : null}
 

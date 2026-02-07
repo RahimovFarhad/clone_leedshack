@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { requestJson } from '../lib/api';
 import { Screen, SessionData } from '../types';
 
 type IntakeScreenProps = {
@@ -12,26 +13,55 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
   const [needText, setNeedText] = useState('');
   const [module, setModule] = useState('');
   const [urgency, setUrgency] = useState('this week');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const modules = ['CS101', 'MATH201', 'PHYS102', 'CHEM151', 'ENG103', 'Other'];
   const urgencies = ['now', 'today', 'this week'];
 
-  const handleFindMatch = () => {
-    // Mock NLP classification
-    const topics = ['Recursion', 'CS101', 'Exam prep'];
-    const similarity = Math.floor(Math.random() * 20) + 80; // 80-99%
+  const handleFindMatch = async () => {
+    const trimmedNeed = needText.trim();
+    if (!trimmedNeed) {
+      setSubmitError('Please describe your need first.');
+      return;
+    }
 
-    setSessionData({
-      ...sessionData,
-      needText,
-      module: module || 'CS101',
-      urgency,
-      matchTopic: topics.join(', '),
-      similarity,
-      userRole: 'seeking',
-    });
+    try {
+      setIsSubmitting(true);
+      setSubmitError('');
 
-    navigate('matching');
+      const contextText = module
+        ? `${trimmedNeed}. Module/subject: ${module}`
+        : trimmedNeed;
+
+      const classified = await requestJson('/api/classify-intent', {
+        method: 'POST',
+        body: JSON.stringify({ text: contextText }),
+      });
+
+      const topicLabel = String(classified?.topic_label || '').trim();
+      const tags = Array.isArray(classified?.tags) ? classified.tags : [];
+      const matchTopic = [topicLabel, ...tags].filter(Boolean).join(', ');
+
+      setSessionData({
+        ...sessionData,
+        roomId: '',
+        roomName: '',
+        participantId: '',
+        needText: trimmedNeed,
+        module: module || 'General',
+        urgency,
+        matchTopic: matchTopic || contextText,
+        similarity: 0,
+        userRole: 'seeking',
+      });
+
+      navigate('matching');
+    } catch (error: any) {
+      setSubmitError('Could not classify your request. Try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -134,15 +164,21 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
         {/* Find Match Button */}
         <TouchableOpacity
           onPress={handleFindMatch}
-          disabled={!needText.trim()}
+          disabled={!needText.trim() || isSubmitting}
           className={`py-5 rounded-xl ${
-            needText.trim() ? 'bg-blue-600' : 'bg-slate-300'
+            needText.trim() && !isSubmitting ? 'bg-blue-600' : 'bg-slate-300'
           }`}
         >
           <Text className="text-white text-center text-lg font-bold">
-            Find Match
+            {isSubmitting ? 'Analyzing...' : 'Find Match'}
           </Text>
         </TouchableOpacity>
+
+        {submitError ? (
+          <Text className="text-red-600 text-center text-sm mt-3">
+            {submitError}
+          </Text>
+        ) : null}
       </View>
     </ScrollView>
   );

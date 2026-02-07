@@ -14,6 +14,15 @@ This repo now hosts both backends in one process:
 
 Default base URL: `http://localhost:4000`
 
+## Database
+
+- Default backend flow storage is SQLite (`DB_PROVIDER=sqlite`) at `data/data.db`.
+- Initialize/upgrade schema: `npm run db:init`
+- Insert sample users (translated from your Python script): `npm run db:seed:users`
+- Optional providers:
+  - `DB_PROVIDER=mongo` (uses `MONGODB_URI`)
+  - `DB_PROVIDER=memory` (in-memory only)
+
 ## Endpoints
 
 ### Core
@@ -24,6 +33,11 @@ Default base URL: `http://localhost:4000`
 - `GET /api/options`
 - `POST /api/classify-intent`
 - `POST /post-request`
+  - Response now includes:
+    - `match_status`: `matched` or `waiting`
+    - `is_creator`: `true` when user created a new waiting room
+    - `matched_existing_room`: `true` when assigned into requester's existing room
+    - `message`: user-facing status text
 
 ### Communities / rooms
 - `GET /communities`
@@ -39,4 +53,5 @@ Default base URL: `http://localhost:4000`
 ## Notes
 
 - Room/community data is in-memory and resets on restart.
-- Matchmaking storage uses MongoDB when configured; otherwise it falls back to in-memory.
+- Matchmaking/request persistence uses the configured DB provider (SQLite by default).
+- `POST /post-request` derives location from request text only when a clear location phrase is detected, and returns `score_breakdown` for direct matches.

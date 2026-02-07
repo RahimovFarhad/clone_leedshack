@@ -6,7 +6,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "db:init": "node scripts/sqlite3_db_version.js",
+    "db:seed:users": "node scripts/spoofed_users.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

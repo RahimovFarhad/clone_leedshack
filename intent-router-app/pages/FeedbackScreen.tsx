@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Screen, SessionData } from '../types';
 
+
 type FeedbackScreenProps = {
   navigate: (screen: Screen) => void;
   sessionData: SessionData;

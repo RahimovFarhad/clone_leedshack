@@ -10,6 +10,7 @@ import {
 import { API_BASE_URL, requestJson } from '../lib/api';
 import { Room, Screen, SessionData } from '../types';
 
+
 type DashboardScreenProps = {
   navigate: (screen: Screen) => void;
   sessionData: SessionData;

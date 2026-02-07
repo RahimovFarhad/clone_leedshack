@@ -22,14 +22,14 @@ function normalizeTags(tags) {
 
 function sanitizeIntent(parsed) {
   const safe = {
-    category: ALLOWED_CATEGORIES.includes(parsed?.category) ? parsed.category : "academics",
+    category: ALLOWED_CATEGORIES.includes(parsed?.category) ? parsed.category : "academic",
     tags: normalizeTags(parsed?.tags),
     topic_label: String(parsed?.topic_label || "Community request").slice(0, 60),
     mode: ALLOWED_MODES.includes(parsed?.mode) ? parsed.mode : "help"
   };
 
   while (safe.tags.length < 2) {
-    safe.tags.push(safe.tags.length === 0 ? "debugging" : "exam_prep");
+    safe.tags.push(safe.tags.length === 0 ? "study_groups" : "meetup");
   }
 
   safe.tags = safe.tags.slice(0, 5);
@@ -47,19 +47,28 @@ function fallbackIntent(text) {
     mode = "group";
   }
 
-  let category = "academics";
-  if (/(cv|resume|job|interview|internship|career)/.test(input)) category = "career";
-  if (/(stress|anxiety|burnout|mental|wellbeing)/.test(input)) category = "wellbeing";
-  if (/(event|club|community|campus|housing|dorm)/.test(input)) category = "campus_life";
-  if (/(project|build|prototype|hackathon)/.test(input)) category = "project";
+  let category = "academic";
+  if (/(meetup|hangout|event|hobby|chill|friends)/.test(input)) category = "social";
+  if (/(cv|resume|job|interview|internship|career|networking)/.test(input)) category = "career";
+  if (/(stress|anxiety|burnout|mental|wellbeing|work life)/.test(input)) category = "wellbeing";
+  if (/(wifi|printer|software install|tech support|setup|connection issue)/.test(input)) {
+    category = "tech_support";
+  }
+  if (/(edinburgh|london|scotland|new zealand|trip)/.test(input)) category = "location";
+  if (/(language exchange|english tutoring|french|speaking practice)/.test(input)) {
+    category = "language";
+  }
+  if (/(fitness|gym|running|yoga|cooking|food|travel buddy)/.test(input)) {
+    category = "lifestyle";
+  }
 
   const tags = ALLOWED_TAGS.filter((tag) =>
     input.includes(tag.replace(/[_-]/g, " "))
   ).slice(0, 3);
   while (tags.length < 2) {
-    const next = mode === "offer" ? "frontend" : "exam_prep";
+    const next = mode === "offer" ? "networking" : "study_groups";
     if (!tags.includes(next)) tags.push(next);
-    else tags.push("debugging");
+    else tags.push("meetup");
   }
 
   const topic_label =
