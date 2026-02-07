@@ -32,6 +32,15 @@ type Room = {
   }>;
 };
 
+type ChatMessage = {
+  id: string;
+  roomId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+};
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://scaling-cod-g4pr9vpgqj4c9pxg-4000.app.github.dev';
 
 const requestJson = async (path: string, options: RequestInit = {}) => {
@@ -76,6 +85,7 @@ const App = () => {
     roomId: '',
     roomName: '',
     participantId: '',
+    participantName: '',
     needText: '',
     module: '',
     urgency: 'this week',
@@ -458,6 +468,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: any) => {
         roomId: roomResponse.room.id,
         roomName: roomResponse.room.name,
         participantId: joinResponse.participant.id,
+        participantName: joinResponse.participant.displayName || 'Guest',
       }));
       navigate('room');
     } catch (error: any) {
@@ -553,32 +564,88 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: any) => {
 // SCREEN 3: ANONYMOUS ROOM
 // ============================================================================
 const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
-  const [messages, setMessages] = useState(
-    sessionData.userRole === 'helping'
-      ? [
-          { id: 1, sender: 'them', text: "Hey, I can't debug this recursion base case. Can you take a look?", time: '2:34 PM' },
-          { id: 2, sender: 'me', text: 'Yes, share the failing input and expected output.', time: '2:35 PM' },
-          { id: 3, sender: 'them', text: 'Input is 0, expected 1 but I get infinite calls.', time: '2:35 PM' },
-        ]
-      : [
-          { id: 1, sender: 'them', text: "Hey! I'm also struggling with recursion. Have you tried the tree traversal examples?", time: '2:34 PM' },
-          { id: 2, sender: 'me', text: "Not yet, I'm still trying to understand the base case concept", time: '2:35 PM' },
-          { id: 3, sender: 'them', text: "Oh that's the key! Let me explain how I think about it...", time: '2:35 PM' },
-        ]
-  );
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState('');
+  const [sendError, setSendError] = useState('');
+  const socketRef = React.useRef<WebSocket | null>(null);
+  const wsBaseUrl = API_BASE_URL.startsWith('https')
+    ? API_BASE_URL.replace('https', 'wss')
+    : API_BASE_URL.replace('http', 'ws');
+
+  React.useEffect(() => {
+    if (!sessionData.roomId || !sessionData.participantId) {
+      return;
+    }
+
+    const socket = new WebSocket(`${wsBaseUrl}/ws`);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      socket.send(
+        JSON.stringify({
+          type: 'join_room',
+          roomId: sessionData.roomId,
+          participantId: sessionData.participantId,
+          displayName: sessionData.participantName || 'Guest',
+        })
+      );
+    };
+
+    socket.onmessage = event => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'chat_message' && payload.message?.roomId === sessionData.roomId) {
+          setMessages(prev => [...prev, payload.message]);
+        }
+      } catch (error) {
+        // Ignore invalid websocket payloads
+      }
+    };
+
+    socket.onerror = () => {
+      setSendError('Chat connection error.');
+    };
+
+    return () => {
+      try {
+        socket.send(
+          JSON.stringify({
+            type: 'leave_room',
+            roomId: sessionData.roomId,
+            participantId: sessionData.participantId,
+          })
+        );
+      } catch (error) {
+        // Ignore websocket close errors
+      }
+      socket.close();
+      socketRef.current = null;
+    };
+  }, [sessionData.roomId, sessionData.participantId, sessionData.participantName, wsBaseUrl]);
 
   const sendMessage = () => {
-    if (inputText.trim()) {
-      setMessages([
-        ...messages,
-        { id: messages.length + 1, sender: 'me', text: inputText, time: 'Now' },
-      ]);
-      setInputText('');
+    const trimmed = inputText.trim();
+    if (!trimmed) {
+      return;
     }
+
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      setSendError('Chat not connected.');
+      return;
+    }
+
+    setSendError('');
+    socketRef.current.send(
+      JSON.stringify({
+        type: 'chat_message',
+        roomId: sessionData.roomId,
+        text: trimmed,
+      })
+    );
+    setInputText('');
   };
 
   const handleLeaveRoom = async () => {
@@ -590,6 +657,15 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
     try {
       setIsLeaving(true);
       setLeaveError('');
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'leave_room',
+            roomId: sessionData.roomId,
+            participantId: sessionData.participantId,
+          })
+        );
+      }
       await requestJson(`/rooms/${sessionData.roomId}/leave`, {
         method: 'POST',
         body: JSON.stringify({ participantId: sessionData.participantId }),
@@ -599,6 +675,7 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
         roomId: '',
         roomName: '',
         participantId: '',
+        participantName: '',
       }));
       navigate('feedback');
     } catch (error: any) {
@@ -646,25 +723,25 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
         {messages.map(message => (
           <View
             key={message.id}
-            className={`mb-4 ${message.sender === 'me' ? 'items-end' : 'items-start'}`}
+            className={`mb-4 ${message.senderId === sessionData.participantId ? 'items-end' : 'items-start'}`}
           >
             <View
               className={`max-w-[75%] px-4 py-3 rounded-2xl ${
-                message.sender === 'me'
+                message.senderId === sessionData.participantId
                   ? 'bg-blue-600 rounded-br-sm'
                   : 'bg-white border border-slate-200 rounded-bl-sm'
               }`}
             >
               <Text
                 className={`text-base leading-relaxed ${
-                  message.sender === 'me' ? 'text-white' : 'text-slate-900'
+                  message.senderId === sessionData.participantId ? 'text-white' : 'text-slate-900'
                 }`}
               >
                 {message.text}
               </Text>
             </View>
             <Text className="text-xs text-slate-400 mt-1 px-1">
-              {message.time}
+              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
         ))}
@@ -723,6 +800,12 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: any) => {
       {leaveError ? (
         <View className="px-6 pb-3">
           <Text className="text-red-600 text-sm text-center">{leaveError}</Text>
+        </View>
+      ) : null}
+
+      {sendError ? (
+        <View className="px-6 pb-3">
+          <Text className="text-red-600 text-sm text-center">{sendError}</Text>
         </View>
       ) : null}
 
@@ -1061,7 +1144,8 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
   const handleJoinRoom = async (room: Room, role: 'seeking' | 'helping') => {
     try {
       setActionError('');
-      const payload = displayName.trim() ? { displayName: displayName.trim() } : {};
+      const resolvedName = displayName.trim() || 'Guest';
+      const payload = { displayName: resolvedName };
       const data = await requestJson(`/rooms/${room.id}/join`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -1072,6 +1156,7 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
         roomId: room.id,
         roomName: room.name,
         participantId: data.participant.id,
+        participantName: data.participant.displayName || resolvedName,
         matchTopic: room.name,
         userRole: role,
       }));
@@ -1104,7 +1189,7 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: any) => {
             <Text className="text-3xl font-bold text-blue-600">{rooms.length}</Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-green-100">
-            <Text className="text-sm text-slate-600 mb-1">People Waiting</Text>
+            <Text className="text-sm text-slate-600 mb-1">Participants</Text>
             <Text className="text-3xl font-bold text-green-600">{rooms.reduce((count, room) => count + room.participants.length, 0)}</Text>
           </View>
           <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-purple-100">

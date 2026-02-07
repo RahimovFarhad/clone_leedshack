@@ -14,6 +14,7 @@ const communities = [
 ];
 
 const rooms = new Map();
+const roomSockets = new Map();
 
 const app = express();
 app.use((req, res, next) => {
@@ -35,6 +36,40 @@ const broadcast = (wss, message) => {
       client.send(payload);
     }
   });
+};
+
+const broadcastToRoom = (roomId, message) => {
+  const sockets = roomSockets.get(roomId);
+  if (!sockets) {
+    return;
+  }
+  const payload = JSON.stringify(message);
+  sockets.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+};
+
+const addSocketToRoom = (roomId, socket) => {
+  if (!roomSockets.has(roomId)) {
+    roomSockets.set(roomId, new Set());
+  }
+  roomSockets.get(roomId).add(socket);
+};
+
+const removeSocketFromRoom = socket => {
+  if (!socket.roomId) {
+    return;
+  }
+  const sockets = roomSockets.get(socket.roomId);
+  if (!sockets) {
+    return;
+  }
+  sockets.delete(socket);
+  if (sockets.size === 0) {
+    roomSockets.delete(socket.roomId);
+  }
 };
 
 const serializeRoom = room => ({
@@ -168,6 +203,9 @@ app.post('/rooms/:roomId/leave', (req, res) => {
   if (room.participants.size === 0) {
     rooms.delete(room.id);
     sendRoomDeletedEvent(room.id);
+    if (roomSockets.has(room.id)) {
+      roomSockets.delete(room.id);
+    }
     return res.json({ roomDeleted: true });
   }
 
@@ -185,6 +223,58 @@ wss.on('connection', socket => {
     rooms: Array.from(rooms.values()).map(serializeRoom),
   };
   socket.send(JSON.stringify(snapshot));
+
+  socket.on('message', raw => {
+    let payload;
+    try {
+      payload = JSON.parse(raw.toString());
+    } catch (error) {
+      return;
+    }
+
+    if (payload?.type === 'join_room') {
+      const room = rooms.get(payload.roomId);
+      if (!room) {
+        return;
+      }
+      socket.roomId = payload.roomId;
+      socket.participantId = payload.participantId || '';
+      socket.displayName = payload.displayName || 'Guest';
+      addSocketToRoom(payload.roomId, socket);
+      return;
+    }
+
+    if (payload?.type === 'leave_room') {
+      removeSocketFromRoom(socket);
+      socket.roomId = '';
+      return;
+    }
+
+    if (payload?.type === 'chat_message') {
+      const roomId = socket.roomId || payload.roomId;
+      const room = rooms.get(roomId);
+      if (!room) {
+        return;
+      }
+      const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+      if (!text) {
+        return;
+      }
+      const message = {
+        id: crypto.randomUUID(),
+        roomId,
+        senderId: socket.participantId || 'guest',
+        senderName: socket.displayName || 'Guest',
+        text,
+        createdAt: new Date().toISOString(),
+      };
+      broadcastToRoom(roomId, { type: 'chat_message', message });
+    }
+  });
+
+  socket.on('close', () => {
+    removeSocketFromRoom(socket);
+  });
 });
 
 const sendRoomEvent = (type, room) => {
