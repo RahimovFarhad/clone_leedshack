@@ -1,3 +1,5 @@
+import { MATCH_THRESHOLD } from "./config.js";
+
 const CORE_TAG_WEIGHTS = {
   debugging: 10,
   frontend: 9,
@@ -155,7 +157,7 @@ export function scoreRoomCandidate({ request, room }) {
 }
 
 export function isGoodMatch(score) {
-  return Number(score || 0) >= 42;
+  return Number(score || 0) >= MATCH_THRESHOLD;
 }
 
 export function toMatchPercentage(score) {

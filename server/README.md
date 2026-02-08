@@ -36,7 +36,7 @@ Default base URL: `http://localhost:4000`
 - `POST /api/classify-intent`
 - `POST /post-request`
   - Response now includes:
-    - `match_status`: `matched`, `candidates`, or `waiting`
+ main
     - `is_creator`: `true` when user created a new waiting room
     - `matched_existing_room`: `true` when assigned into requester's existing room
     - `message`: user-facing status text
