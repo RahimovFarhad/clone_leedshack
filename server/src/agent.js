@@ -70,6 +70,12 @@ function detectCategory(text) {
   return "academic";
 }
 
+function getFallbackTags(category) {
+  const fallback = CATEGORY_DEFAULT_TAGS[category] || ["project_support", "study_groups"];
+  const allowedFallback = fallback.filter((tag) => ALLOWED_TAGS.includes(tag));
+  return allowedFallback.length > 0 ? allowedFallback : ["project_support", "study_groups"];
+}
+
 function inferTags(text, mode, category) {
   const input = cleanText(text);
   const scores = new Map();
@@ -96,7 +102,7 @@ function inferTags(text, mode, category) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([tag]) => tag);
 
-  const fallback = CATEGORY_DEFAULT_TAGS[category] || ["project_support", "study_groups"];
+  const fallback = getFallbackTags(category);
   const merged = [...ranked, ...fallback].filter((tag, i, arr) => arr.indexOf(tag) === i);
   return merged.slice(0, 5);
 }
@@ -114,7 +120,7 @@ export async function classifyIntent(inputText) {
   const tags = inferTags(text, mode, category);
 
   while (tags.length < 2) {
-    const fallback = CATEGORY_DEFAULT_TAGS[category] || ["project_support", "study_groups"];
+    const fallback = getFallbackTags(category);
     tags.push(fallback[tags.length] || "study_groups");
   }
 
