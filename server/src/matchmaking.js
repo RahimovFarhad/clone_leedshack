@@ -156,8 +156,20 @@ export function scoreRoomCandidate({ request, room }) {
   return { score, score_breakdown: scoreBreakdown, reasons };
 }
 
-export function isGoodMatch(score) {
-  return Number(score || 0) >= MATCH_THRESHOLD;
+export function isGoodMatch(score, options = {}) {
+  const value = Number(score || 0);
+  const requestTagCount = Math.max(1, Number(options.requestTagCount || 0) || 1);
+  const roomTagCount = Math.max(1, Number(options.roomTagCount || 0) || 1);
+  const tagGap = Math.abs(requestTagCount - roomTagCount);
+
+  // Dynamic threshold:
+  // - small gap keeps threshold near base
+  // - larger gap lowers threshold moderately (not below floor)
+  const base = Number(MATCH_THRESHOLD || 42);
+  const gapPenalty = Math.min(8, tagGap * 2);
+  const adaptiveThreshold = Math.max(34, base - gapPenalty);
+
+  return value >= adaptiveThreshold;
 }
 
 export function toMatchPercentage(score) {

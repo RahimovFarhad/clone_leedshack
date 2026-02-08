@@ -18,6 +18,42 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const rooms = new Map();
 const roomSockets = new Map();
 const roomReports = new Map();
+const recentRequestCache = new Map();
+const REQUEST_DEDUP_WINDOW_MS = 15000;
+
+function buildRequestFingerprint({ userId, communityId, text, urgency }) {
+  const payload = [
+    String(userId || "").trim().toLowerCase(),
+    String(communityId || "").trim().toLowerCase(),
+    String(urgency || "").trim().toLowerCase(),
+    String(text || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+  ].join("|");
+  return crypto.createHash("sha1").update(payload).digest("hex");
+}
+
+function getCachedRequestResponse(fingerprint) {
+  const cached = recentRequestCache.get(fingerprint);
+  if (!cached) return null;
+  if (Date.now() - cached.createdAt > REQUEST_DEDUP_WINDOW_MS) {
+    recentRequestCache.delete(fingerprint);
+    return null;
+  }
+  return cached.response;
+}
+
+function storeCachedRequestResponse(fingerprint, response) {
+  recentRequestCache.set(fingerprint, { createdAt: Date.now(), response });
+}
+
+function confidenceFromScore(score) {
+  const value = Number(score || 0);
+  if (value >= 72) return "high";
+  if (value >= 48) return "medium";
+  return "low";
+}
 
 function ensureRealtimeRoom({ roomId, communityId, roomName, mode, tags }) {
   const normalizedRoomId = String(roomId || "").trim();
@@ -228,6 +264,12 @@ app.post("/post-request", async (req, res) => {
       return res.status(400).json({ error: "'communityId' is required and must be valid" });
     }
 
+    const requestFingerprint = buildRequestFingerprint({ userId, communityId, text, urgency });
+    const cachedResponse = getCachedRequestResponse(requestFingerprint);
+    if (cachedResponse) {
+      return res.json(cachedResponse);
+    }
+
     console.log("[post-request][step 2] classifying intent");
     const intent = await classifyIntent(text);
     const mergedTags = Array.from(new Set((Array.isArray(intent.tags) ? intent.tags : []).filter(Boolean)));
@@ -264,13 +306,17 @@ app.post("/post-request", async (req, res) => {
         urgency
       };
       const scoring = scoreRoomCandidate({ request: requestProfile, room: candidate });
-      const qualifies = isGoodMatch(scoring.score);
+      const qualifies = isGoodMatch(scoring.score, {
+        requestTagCount: mergedTags.length,
+        roomTagCount: Array.isArray(room.tags) ? room.tags.length : 0
+      });
       const option = {
         room_id: roomId,
         room_title: String(room.name || "Community Room"),
         request_id: `room:${roomId}`,
         score: scoring.score,
         percentage: toMatchPercentage(scoring.score),
+        confidence: confidenceFromScore(scoring.score),
         qualifies,
         recommended: false,
         reasons: scoring.reasons,
@@ -301,7 +347,7 @@ app.post("/post-request", async (req, res) => {
         bestRoomId: String(candidateRooms[0].room_id)
       });
       const matchStatus = qualifyingRooms.length > 0 ? "matched" : "candidates";
-      return res.json({
+      const responseBody = {
         room_id: String(candidateRooms[0].room_id),
         waiting_room_id: null,
         match_status: matchStatus,
@@ -313,7 +359,9 @@ app.post("/post-request", async (req, res) => {
         message: qualifyingRooms.length > 0
           ? "Found strong room matches. Best option is marked as recommended, but you can choose any."
           : "Found nearby room options. You can pick one or create your own room."
-      });
+      };
+      storeCachedRequestResponse(requestFingerprint, responseBody);
+      return res.json(responseBody);
     }
 
     const waitingRoomId = crypto.randomUUID();
@@ -334,7 +382,7 @@ app.post("/post-request", async (req, res) => {
       mode: intent.mode
     });
 
-    return res.json({
+    const responseBody = {
       room_id: String(waitingRoomId),
       waiting_room_id: String(waitingRoomId),
       match_status: "waiting",
@@ -346,7 +394,9 @@ app.post("/post-request", async (req, res) => {
       message: closestRoom
         ? "No qualifying match found. We created a room for you, and included the closest option."
         : "No match found yet. We created a room for you and you're now waiting for someone to join."
-    });
+    };
+    storeCachedRequestResponse(requestFingerprint, responseBody);
+    return res.json(responseBody);
   } catch (error) {
     console.error("post-request error", error);
     return res.status(500).json({ error: "Post request failed" });

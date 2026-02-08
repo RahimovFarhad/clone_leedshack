@@ -17,12 +17,11 @@ type CandidateRoom = {
   request_id: string;
   score: number;
   percentage: number;
+  confidence?: 'high' | 'medium' | 'low';
   qualifies: boolean;
   recommended: boolean;
   reasons: string[];
 };
-
-const AUTO_SELECT_THRESHOLD = 70;
 
 const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScreenProps) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -81,7 +80,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
           ? (matchResult.candidate_rooms as CandidateRoom[])
           : [];
         const recommended = rooms.find(room => room.recommended) || rooms[0] || null;
-        const bestPercentage = Number(recommended?.percentage || 0);
+        const bestConfidence = String(recommended?.confidence || 'low').toLowerCase();
         const closest = matchResult?.closest_room || null;
         const score = Number(matchResult?.score);
         const similarity = Number.isFinite(score)
@@ -93,10 +92,10 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
         setCandidateRooms(rooms);
         setShowAllCandidates(false);
         setClosestRoom(closest);
-        if ((nextStatus === 'candidates' || nextStatus === 'matched') && bestPercentage < AUTO_SELECT_THRESHOLD) {
+        if ((nextStatus === 'candidates' || nextStatus === 'matched') && bestConfidence !== 'high') {
           setSelectedRoomId('');
           setSelectionGuidance(
-            `${bestPercentage}% is the best we can do right now. You can join one of the existing rooms or create your own.`
+            `Top confidence is ${bestConfidence.toUpperCase()}. Review the reasons below and choose a room, or create your own.`
           );
         } else {
           setSelectedRoomId(String(recommended?.room_id || matchResult?.room_id || '').trim());
@@ -211,6 +210,13 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
     ? candidateRooms
     : candidateRooms.slice(0, 2);
 
+  const confidenceStyle = (confidence?: string) => {
+    const key = String(confidence || '').toLowerCase();
+    if (key === 'high') return { label: 'HIGH', box: 'bg-emerald-100', text: 'text-emerald-800' };
+    if (key === 'medium') return { label: 'MEDIUM', box: 'bg-amber-100', text: 'text-amber-800' };
+    return { label: 'LOW', box: 'bg-gray-200', text: 'text-gray-700' };
+  };
+
   const handleCreateOwnRoom = async () => {
     if (!sessionData.selectedCommunityId) {
       setJoinError('Select a community first.');
@@ -312,16 +318,20 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
                         <Text className="text-base font-bold text-black flex-1 pr-3" numberOfLines={1}>
                           {room.room_title || `Room #${room.room_id}`}
                         </Text>
-                        <Text className="text-black font-bold text-lg">{room.percentage}%</Text>
+                        <View className={`px-2.5 py-1 rounded-full ${confidenceStyle(room.confidence).box}`}>
+                          <Text className={`text-xs font-bold ${confidenceStyle(room.confidence).text}`}>
+                            {confidenceStyle(room.confidence).label}
+                          </Text>
+                        </View>
                       </View>
-                      <Text className="text-gray-500 text-xs mb-3">ID: {room.room_id}</Text>
+                      <Text className="text-gray-500 text-xs mb-3">ID: {room.room_id} • Score {room.percentage}%</Text>
                       {room.recommended ? (
                         <View className="self-start px-3 py-1 rounded-full bg-black mb-3">
                           <Text className="text-white text-xs font-bold">RECOMMENDED</Text>
                         </View>
                       ) : null}
-                      <Text className="text-gray-600 text-sm" numberOfLines={2}>
-                        {Array.isArray(room.reasons) ? room.reasons.join(' • ') : ''}
+                      <Text className="text-gray-600 text-sm" numberOfLines={3}>
+                        {Array.isArray(room.reasons) ? room.reasons.slice(0, 3).join(' • ') : ''}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -352,7 +362,9 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
                   <Text className="text-black font-bold text-sm">
                     Closest option: {closestRoom.room_title || `Room #${closestRoom.room_id}`}
                   </Text>
-                  <Text className="text-gray-600 text-xs mt-1">{closestRoom.percentage}% match</Text>
+                  <Text className="text-gray-600 text-xs mt-1">
+                    Confidence {String(closestRoom.confidence || 'low').toUpperCase()} • Score {closestRoom.percentage}%
+                  </Text>
                 </TouchableOpacity>
               ) : null}
             </View>
