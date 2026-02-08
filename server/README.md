@@ -18,6 +18,7 @@ Default base URL: `http://localhost:4000`
 
 - Default backend flow storage is SQLite (`DB_PROVIDER=sqlite`) at `data/data.db`.
 - Initialize/upgrade schema: `npm run db:init`
+- Clear all persisted data: `npm run db:clear`
 - Insert sample users (translated from your Python script): `npm run db:seed:users`
 - Seed communities for frontend: `npm run db:seed:communities`
 - Optional providers:
@@ -47,6 +48,7 @@ Default base URL: `http://localhost:4000`
 - `GET /rooms/:roomId`
 - `POST /rooms/:roomId/join`
 - `POST /rooms/:roomId/leave`
+- `POST /admin/reset-data` (optional `x-admin-token` header if `ADMIN_RESET_TOKEN` is set)
 
 ### WebSocket
 - `WS /ws`

@@ -1,186 +1,127 @@
-import {
-  ALLOWED_CATEGORIES,
-  ALLOWED_MODES,
-  ALLOWED_TAGS,
-  LLM_PROVIDER,
-  CLOUDFLARE_ACCOUNT_ID,
-  CLOUDFLARE_API_TOKEN,
-  CLOUDFLARE_MODEL
-} from "./config.js";
+import { ALLOWED_CATEGORIES, ALLOWED_MODES, ALLOWED_TAGS } from "./config.js";
 import { IntentSchema } from "./schema.js";
 
-function normalizeTags(tags) {
-  const normalized = Array.isArray(tags)
-    ? tags
-        .map((t) => String(t || "").trim().toLowerCase())
-        .filter(Boolean)
-        .filter((t, i, arr) => arr.indexOf(t) === i)
-    : [];
+const CATEGORY_HINTS = {
+  academic: /\b(study|exam|assignment|course|homework|module|lecture|coding|programming|project)\b/i,
+  career: /\b(resume|cv|job|career|interview|internship|hiring|linkedin)\b/i,
+  tech_support: /\b(debug|bug|error|install|setup|api|backend|frontend|database|sql)\b/i,
+  social: /\b(meetup|hangout|friends|chill|club|event)\b/i,
+  wellbeing: /\b(stress|burnout|anxiety|mental health|overwhelmed)\b/i,
+  language: /\b(language|english|french|speaking practice)\b/i
+};
 
-  return normalized.filter((t) => ALLOWED_TAGS.includes(t));
+const TAG_RULES = [
+  { tag: "debugging", pattern: /\b(debug|bug|error|fix|stack trace)\b/i, weight: 6 },
+  { tag: "frontend", pattern: /\b(frontend|front end|react|css|html|ui)\b/i, weight: 5 },
+  { tag: "backend", pattern: /\b(backend|back end|node|server|api)\b/i, weight: 5 },
+  { tag: "databases", pattern: /\b(database|db|sql|postgres|mysql|mongodb)\b/i, weight: 5 },
+  { tag: "api_design", pattern: /\b(api design|endpoint|schema|payload)\b/i, weight: 4 },
+  { tag: "algorithms", pattern: /\b(algorithm|leetcode|complexity)\b/i, weight: 4 },
+  { tag: "data_structures", pattern: /\b(data structure|tree|graph|hash map|queue|stack)\b/i, weight: 4 },
+  { tag: "recursion", pattern: /\b(recursion|recursive)\b/i, weight: 4 },
+  { tag: "project_support", pattern: /\b(project|build together|pair program)\b/i, weight: 4 },
+  { tag: "study_groups", pattern: /\b(study group|study together|revise together)\b/i, weight: 4 },
+  { tag: "exam_prep", pattern: /\b(exam|midterm|final|test prep)\b/i, weight: 4 },
+  { tag: "homework_help", pattern: /\b(homework|assignment|coursework)\b/i, weight: 4 },
+  { tag: "resume_help", pattern: /\b(resume|cv|portfolio)\b/i, weight: 4 },
+  { tag: "interview_prep", pattern: /\b(interview|mock interview)\b/i, weight: 4 },
+  { tag: "internship_search", pattern: /\b(internship|placement)\b/i, weight: 4 },
+  { tag: "job_search", pattern: /\b(job search|job hunt|apply)\b/i, weight: 4 },
+  { tag: "networking", pattern: /\b(networking|linkedin|connect)\b/i, weight: 3 },
+  { tag: "mental_health", pattern: /\b(mental health|anxiety|burnout)\b/i, weight: 4 },
+  { tag: "stress_management", pattern: /\b(stress|overwhelmed|coping)\b/i, weight: 3 },
+  { tag: "language_exchange", pattern: /\b(language exchange|conversation partner)\b/i, weight: 4 },
+  { tag: "english_tutoring", pattern: /\b(english help|english tutoring)\b/i, weight: 4 },
+  { tag: "french_speaking", pattern: /\b(french|francais)\b/i, weight: 4 },
+  { tag: "events", pattern: /\b(event|events|meetup)\b/i, weight: 3 },
+  { tag: "conference", pattern: /\b(conference|summit)\b/i, weight: 3 },
+  { tag: "workshop", pattern: /\b(workshop|bootcamp)\b/i, weight: 3 }
+];
+
+const CATEGORY_DEFAULT_TAGS = {
+  academic: ["project_support", "study_groups"],
+  career: ["resume_help", "interview_prep"],
+  tech_support: ["debugging", "backend"],
+  social: ["meetup", "events"],
+  wellbeing: ["mental_health", "stress_management"],
+  language: ["language_exchange", "english_tutoring"]
+};
+
+function cleanText(text) {
+  return String(text || "").trim().replace(/\s+/g, " ");
 }
 
-function sanitizeIntent(parsed) {
-  const safe = {
-    category: ALLOWED_CATEGORIES.includes(parsed?.category) ? parsed.category : "academic",
-    tags: normalizeTags(parsed?.tags),
-    topic_label: String(parsed?.topic_label || "Community request").slice(0, 60),
-    mode: ALLOWED_MODES.includes(parsed?.mode) ? parsed.mode : "help"
-  };
-
-  while (safe.tags.length < 2) {
-    safe.tags.push(safe.tags.length === 0 ? "study_groups" : "meetup");
+function detectMode(text) {
+  const input = cleanText(text).toLowerCase();
+  if (/\b(work together|collab|collaborate|pair program|team up|group)\b/.test(input)) {
+    return "group";
   }
-
-  safe.tags = safe.tags.slice(0, 5);
-  return IntentSchema.parse(safe);
+  if (/\b(i can help|happy to help|offering help|mentor|i can support)\b/.test(input)) {
+    return "offer";
+  }
+  return "help";
 }
 
-function fallbackIntent(text) {
-  const input = String(text || "").toLowerCase();
-
-  let mode = "help";
-  if (/(i can help|i can mentor|i can support|available to help|offering)/.test(input)) {
-    mode = "offer";
+function detectCategory(text) {
+  const input = cleanText(text);
+  for (const [category, pattern] of Object.entries(CATEGORY_HINTS)) {
+    if (pattern.test(input)) return category;
   }
-  if (/(let.s discuss|discussion|group study|study group|anyone up for)/.test(input)) {
-    mode = "group";
-  }
-
-  let category = "academic";
-  if (/(meetup|hangout|event|hobby|chill|friends)/.test(input)) category = "social";
-  if (/(cv|resume|job|interview|internship|career|networking)/.test(input)) category = "career";
-  if (/(stress|anxiety|burnout|mental|wellbeing|work life)/.test(input)) category = "wellbeing";
-  if (/(wifi|printer|software install|tech support|setup|connection issue)/.test(input)) {
-    category = "tech_support";
-  }
-  if (/(edinburgh|london|scotland|new zealand|trip)/.test(input)) category = "location";
-  if (/(language exchange|english tutoring|french|speaking practice)/.test(input)) {
-    category = "language";
-  }
-  if (/(fitness|gym|running|yoga|cooking|food|travel buddy)/.test(input)) {
-    category = "lifestyle";
-  }
-
-  const tags = ALLOWED_TAGS.filter((tag) =>
-    input.includes(tag.replace(/[_-]/g, " "))
-  ).slice(0, 3);
-  while (tags.length < 2) {
-    const next = mode === "offer" ? "networking" : "study_groups";
-    if (!tags.includes(next)) tags.push(next);
-    else tags.push("meetup");
-  }
-
-  const topic_label =
-    String(text || "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .slice(0, 56) || "Community request";
-
-  return { category, tags, topic_label, mode };
+  return "academic";
 }
 
-function buildSystemPrompt() {
-  return `You classify a community post into strict JSON.
-Return ONLY valid JSON with keys: category, tags, topic_label, mode.
-Rules:
-- category: choose exactly one from: ${ALLOWED_CATEGORIES.join(", ")}
-- tags: choose at least 3, at max 6 tags from: ${ALLOWED_TAGS.join(", ")}
-- topic_label: short human-readable label you invent (3-60 chars)
-- mode: choose one from (choose only the most fitting): ${ALLOWED_MODES.join(" | ")}
-  - help: user clearly asks for help
-  - offer: user clearly offers to help
-  - group: user invites group discussion/collaboration
-No markdown, no explanations.`;
+function inferTags(text, mode, category) {
+  const input = cleanText(text);
+  const scores = new Map();
+
+  for (const rule of TAG_RULES) {
+    if (!ALLOWED_TAGS.includes(rule.tag)) continue;
+    if (rule.pattern.test(input)) {
+      scores.set(rule.tag, (scores.get(rule.tag) || 0) + rule.weight);
+    }
+  }
+
+  for (const tag of ALLOWED_TAGS) {
+    const phrase = tag.replace(/[_-]/g, " ");
+    if (input.toLowerCase().includes(phrase)) {
+      scores.set(tag, (scores.get(tag) || 0) + 2);
+    }
+  }
+
+  if (mode === "group" && /\b(work together|collab|collaborate|pair program|team up)\b/i.test(input)) {
+    scores.set("project_support", (scores.get("project_support") || 0) + 5);
+  }
+
+  const ranked = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([tag]) => tag);
+
+  const fallback = CATEGORY_DEFAULT_TAGS[category] || ["project_support", "study_groups"];
+  const merged = [...ranked, ...fallback].filter((tag, i, arr) => arr.indexOf(tag) === i);
+  return merged.slice(0, 5);
 }
 
-async function classifyWithCloudflare(inputText) {
-  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-    throw new Error("Cloudflare credentials are not configured");
-  }
-
-  const accountId = String(CLOUDFLARE_ACCOUNT_ID || "").trim();
-  const apiToken = String(CLOUDFLARE_API_TOKEN || "").trim();
-  const modelPath = String(CLOUDFLARE_MODEL || "").trim().replace(/^\/+/, "");
-
-  if (accountId === "your_account_id") {
-    throw new Error(
-      "Cloudflare account ID is still set to placeholder value 'your_account_id'"
-    );
-  }
-
-  if (apiToken === "your_cloudflare_api_token") {
-    throw new Error(
-      "Cloudflare API token is still set to placeholder value 'your_cloudflare_api_token'"
-    );
-  }
-
-  if (!/^[a-f0-9]{32}$/i.test(accountId)) {
-    throw new Error("Cloudflare account ID must be a 32-character hex string");
-  }
-
-  if (!modelPath) {
-    throw new Error("Cloudflare model path is empty");
-  }
-
-  // Workers AI expects the model path as a raw path segment (e.g. @cf/meta/...)
-  // and not URL-encoded as @cf%2Fmeta%2F...
-  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${modelPath}`;
-  console.log("[classify][cloudflare] request started", { model: modelPath });
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: buildSystemPrompt() },
-        { role: "user", content: String(inputText || "") }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 300,
-      temperature: 0.2
-    })
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Cloudflare request failed: ${response.status} ${body}`);
-  }
-  console.log("[classify][cloudflare] request succeeded");
-
-  const data = await response.json();
-  const rawText =
-    data?.result?.response ||
-    data?.result?.text ||
-    data?.result?.output_text ||
-    (Array.isArray(data?.result?.output)
-      ? data.result.output.map((p) => p?.content || "").join("")
-      : "{}");
-
-  let parsed;
-  try {
-    parsed = JSON.parse(rawText);
-  } catch {
-    parsed = {};
-  }
-
-  return sanitizeIntent(parsed);
+function makeTopicLabel(text) {
+  const cleaned = cleanText(text);
+  if (!cleaned) return "Request";
+  return cleaned.slice(0, 60);
 }
 
 export async function classifyIntent(inputText) {
-  const provider = String(LLM_PROVIDER || "").toLowerCase();
-  console.log("[classify] provider selected", { provider });
+  const text = cleanText(inputText);
+  const mode = ALLOWED_MODES.includes(detectMode(text)) ? detectMode(text) : "help";
+  const category = ALLOWED_CATEGORIES.includes(detectCategory(text)) ? detectCategory(text) : "academic";
+  const tags = inferTags(text, mode, category);
 
-  if (provider === "fallback") {
-    return IntentSchema.parse(fallbackIntent(inputText));
+  while (tags.length < 2) {
+    const fallback = CATEGORY_DEFAULT_TAGS[category] || ["project_support", "study_groups"];
+    tags.push(fallback[tags.length] || "study_groups");
   }
 
-  try {
-    return await classifyWithCloudflare(inputText);
-  } catch (error) {
-    console.warn("Cloudflare classification failed, falling back:", error.message);
-    return IntentSchema.parse(fallbackIntent(inputText));
-  }
+  return IntentSchema.parse({
+    category,
+    tags,
+    topic_label: makeTopicLabel(text),
+    mode
+  });
 }

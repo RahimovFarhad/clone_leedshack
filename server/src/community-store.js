@@ -120,3 +120,22 @@ export async function getCommunityByIdStore(communityId) {
     theme: row.theme
   });
 }
+
+export async function clearCommunitiesStore() {
+  const provider = String(DB_PROVIDER || "sqlite").toLowerCase();
+  if (provider !== "mongo") {
+    return { provider, communitiesDeleted: 0, ok: true };
+  }
+
+  const collection = await getMongoCollection();
+  if (!collection) {
+    return { provider: "mongo", communitiesDeleted: 0, ok: true };
+  }
+
+  const result = await collection.deleteMany({});
+  return {
+    provider: "mongo",
+    communitiesDeleted: Number(result.deletedCount || 0),
+    ok: true
+  };
+}

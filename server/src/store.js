@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DB_PROVIDER, MONGODB_DB_NAME, MONGODB_URI } from "./config.js";
-import { ensureInternalUserId, getSqliteDatabase } from "./sqlite-db.js";
+import { clearSqliteDatabase, ensureInternalUserId, getSqliteDatabase } from "./sqlite-db.js";
 
 const REQUESTS_COLLECTION = "requests";
 const ROOMS_COLLECTION = "rooms";
@@ -70,6 +70,7 @@ function fromSqliteRequestRow(row) {
   return normalizeRequestDoc({
     _id: row.request_id,
     user_id: row.external_user_id,
+    community_id: row.community_id,
     text: row.text,
     urgency: row.urgency,
     location: row.location,
@@ -150,16 +151,22 @@ async function getStore() {
   }
 
   if (provider === "mongo") {
-    const collections = await getMongoCollections();
-    if (collections) {
-      return { kind: "mongo", ...collections };
-    }
+    try {
+      const collections = await getMongoCollections();
+      if (collections) {
+        return { kind: "mongo", ...collections };
+      }
 
-    if (!warnedFallback) {
-      warnedFallback = true;
-      console.warn("DB_PROVIDER=mongo but MongoDB is not configured. Falling back to memory store.");
+      if (!warnedFallback) {
+        warnedFallback = true;
+        console.warn("DB_PROVIDER=mongo but MongoDB is not configured. Falling back to SQLite store.");
+      }
+    } catch (error) {
+      if (!warnedFallback) {
+        warnedFallback = true;
+        console.warn(`MongoDB init failed (${error.message}). Falling back to SQLite store.`);
+      }
     }
-    return { kind: "memory" };
   }
 
   try {
@@ -186,8 +193,8 @@ export async function createRequest(doc) {
       .prepare(
         `INSERT INTO Request (
           user_id, external_user_id, text, tags, intent, urgency, matched, subject,
-          status, category, mode, topic_label, location, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          status, category, mode, topic_label, location, community_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         internalUserId,
@@ -203,6 +210,7 @@ export async function createRequest(doc) {
         payload.mode || "",
         payload.topic_label || "",
         payload.location || null,
+        payload.community_id || null,
         payload.created_at
       );
 
@@ -222,25 +230,47 @@ export async function createRequest(doc) {
   return record;
 }
 
-export async function listOpenRequestsExcludingUser(userId) {
+export async function listOpenRequestsExcludingUser(userId, options = {}) {
+  const communityId = String(options.communityId || "").trim();
   const store = await getStore();
 
   if (store.kind === "sqlite") {
-    const rows = store.db
-      .prepare(
-        `SELECT * FROM Request
-         WHERE status = 'OPEN' AND external_user_id <> ?
-         ORDER BY datetime(created_at) DESC
-         LIMIT 500`
-      )
-      .all(String(userId || ""));
+    const rows = communityId
+      ? store.db
+          .prepare(
+            `SELECT * FROM Request
+             WHERE status = 'OPEN'
+               AND external_user_id <> ?
+               AND (community_id = ? OR community_id IS NULL OR community_id = '')
+             ORDER BY datetime(created_at) DESC
+             LIMIT 500`
+          )
+          .all(String(userId || ""), communityId)
+      : store.db
+          .prepare(
+            `SELECT * FROM Request
+             WHERE status = 'OPEN' AND external_user_id <> ?
+             ORDER BY datetime(created_at) DESC
+             LIMIT 500`
+          )
+          .all(String(userId || ""));
 
     return rows.map(fromSqliteRequestRow);
   }
 
   if (store.kind === "mongo") {
+    const filter = { status: "OPEN", user_id: { $ne: userId } };
+    if (communityId) {
+      filter.$or = [
+        { community_id: communityId },
+        { community_id: { $exists: false } },
+        { community_id: null },
+        { community_id: "" }
+      ];
+    }
+
     const docs = await store.requests
-      .find({ status: "OPEN", user_id: { $ne: userId } })
+      .find(filter)
       .sort({ created_at: -1 })
       .limit(500)
       .toArray();
@@ -248,7 +278,12 @@ export async function listOpenRequestsExcludingUser(userId) {
   }
 
   return memory.requests
-    .filter((doc) => doc.status === "OPEN" && doc.user_id !== userId)
+    .filter((doc) => {
+      if (doc.status !== "OPEN" || doc.user_id === userId) return false;
+      if (!communityId) return true;
+      const requestCommunity = String(doc.community_id || "").trim();
+      return !requestCommunity || requestCommunity === communityId;
+    })
     .sort((a, b) => normalizeDate(b.created_at) - normalizeDate(a.created_at))
     .map(normalizeRequestDoc);
 }
@@ -504,4 +539,34 @@ export async function findOrCreateTopicRoom({ category, firstTag, userId }) {
   room.participants = [...nextParticipants];
   room.updated_at = now;
   return room;
+}
+
+export async function clearStoreData() {
+  const store = await getStore();
+
+  if (store.kind === "sqlite") {
+    return clearSqliteDatabase();
+  }
+
+  if (store.kind === "mongo") {
+    const [requestsResult, roomsResult] = await Promise.all([
+      store.requests.deleteMany({}),
+      store.rooms.deleteMany({})
+    ]);
+
+    return {
+      provider: "mongo",
+      requestsDeleted: Number(requestsResult.deletedCount || 0),
+      roomsDeleted: Number(roomsResult.deletedCount || 0),
+      ok: true
+    };
+  }
+
+  const cleared = {
+    requestsDeleted: memory.requests.length,
+    roomsDeleted: memory.rooms.length
+  };
+  memory.requests = [];
+  memory.rooms = [];
+  return { provider: "memory", ...cleared, ok: true };
 }

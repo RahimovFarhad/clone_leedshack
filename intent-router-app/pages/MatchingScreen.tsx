@@ -140,12 +140,12 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
 
   if (isLoading) {
     return (
-      <View className="flex-1 bg-slate-50 justify-center items-center px-6">
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text className="text-xl font-semibold text-slate-900 mt-6 text-center">
-          Finding room options... 
+      <View className="flex-1 bg-white justify-center items-center px-6">
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-xl font-bold text-black mt-6 text-center">
+          Finding room options...
         </Text>
-        <Text className="text-slate-500 mt-3 text-center">
+        <Text className="text-gray-600 mt-3 text-center text-sm">
           Ranking compatible rooms and preparing recommendations
         </Text>
       </View>
@@ -180,6 +180,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
           body: JSON.stringify({
             communityId: sessionData.selectedCommunityId,
             name: roomName,
+            mode: sessionData.userRole === 'helping' ? 'offer' : 'help',
           }),
         });
         targetRoomId = roomResponse.room.id;
@@ -229,6 +230,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
         body: JSON.stringify({
           communityId: sessionData.selectedCommunityId,
           name: roomName,
+          mode: sessionData.userRole === 'helping' ? 'offer' : 'help',
         }),
       });
 
@@ -253,157 +255,177 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
   };
 
   return (
-    <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 24 }}>
-      <View className="items-center mb-8">
-        <View className={`w-24 h-24 rounded-full items-center justify-center mb-4 ${
-          matchStatus === 'candidates' || matchStatus === 'matched' ? 'bg-green-500' : 'bg-amber-500'
-        }`}>
-          <Text className="text-white text-5xl">
-            {matchStatus === 'candidates' || matchStatus === 'matched' ? '✓' : '⏳'}
+    <ScrollView className="flex-1 bg-white">
+      <View className="px-6 py-12 max-w-3xl mx-auto w-full">
+        <View className="items-center mb-12">
+          <View className={`w-24 h-24 rounded-full items-center justify-center mb-4 ${
+            matchStatus === 'candidates' || matchStatus === 'matched' ? 'bg-black' : 'bg-yellow-400'
+          }`}>
+            <Text className="text-white text-5xl">
+              {matchStatus === 'candidates' || matchStatus === 'matched' ? '✓' : '⏳'}
+            </Text>
+          </View>
+          <Text className="text-2xl font-bold text-black">
+            {matchStatus === 'candidates' || matchStatus === 'matched' ? 'Room Options Found' : 'Room Created'}
           </Text>
         </View>
-        <Text className="text-2xl font-bold text-slate-900">
-          {matchStatus === 'candidates' || matchStatus === 'matched' ? 'Room Options Found' : 'Room Created'}
-        </Text>
-      </View>
 
-      <View className="bg-white rounded-2xl p-6 mb-6 shadow-lg border-2 border-blue-100">
-        <Text className="text-sm font-semibold text-blue-600 mb-4 uppercase tracking-wide">
-          Matchmaking Results
-        </Text>
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-black uppercase tracking-wider mb-6">
+            Matchmaking Results
+          </Text>
 
-        <View className="mb-4">
-          <Text className="text-base text-slate-700 font-medium mb-2">Request topic:</Text>
-          <Text className="text-lg font-bold text-slate-900">{sessionData.matchTopic}</Text>
-        </View>
+          <View className="bg-gray-50 rounded-lg p-5 mb-6 border border-gray-200">
+            <Text className="text-sm text-gray-600 mb-2">Request topic:</Text>
+            <Text className="text-lg font-bold text-black">{sessionData.matchTopic}</Text>
+          </View>
 
-        {matchStatus === 'candidates' ? (
-          <View className="mb-4">
-            <Text className="text-slate-700 text-sm mb-3">
-              Here are the close rooms we found for you, but you can also create and wait in your own room too.
-            </Text>
-            {selectionGuidance ? (
-              <View className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
-                <Text className="text-amber-900 text-sm font-medium">{selectionGuidance}</Text>
-              </View>
-            ) : null}
-            {visibleCandidateRooms.map(room => {
-              const selected = selectedRoomId === room.room_id;
-              return (
-                <TouchableOpacity
-                  key={room.request_id}
-                  onPress={() => setSelectedRoomId(room.room_id)}
-                  className={`mb-3 p-4 rounded-xl border-2 ${selected ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}
-                >
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-slate-900 font-semibold" numberOfLines={1}>
-                      {room.room_title || `Room #${room.room_id}`}
-                    </Text>
-                    <Text className="text-blue-700 font-bold">{room.percentage}%</Text>
-                  </View>
-                  <Text className="text-slate-500 text-xs mb-2">ID: {room.room_id}</Text>
-                  {room.recommended ? (
-                    <View className="self-start px-2 py-1 rounded-full bg-emerald-100 mb-2">
-                      <Text className="text-emerald-700 text-xs font-semibold">Recommended</Text>
+          {matchStatus === 'candidates' ? (
+            <View className="mb-6">
+              <Text className="text-sm text-gray-700 mb-4">
+                Here are the close rooms we found for you, but you can also create and wait in your own room too.
+              </Text>
+              {selectionGuidance ? (
+                <View className="mb-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+                  <Text className="text-black text-sm font-semibold">{selectionGuidance}</Text>
+                </View>
+              ) : null}
+              {visibleCandidateRooms.map(room => {
+                const selected = selectedRoomId === room.room_id;
+                return (
+                  <TouchableOpacity
+                    key={room.request_id}
+                    onPress={() => setSelectedRoomId(room.room_id)}
+                    className={`mb-3 rounded-lg overflow-hidden border ${
+                      selected ? 'border-black bg-gray-50' : 'border-gray-200 bg-white'
+                    }`}
+                    style={{
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: selected ? 0.08 : 0.04,
+                      shadowRadius: 4,
+                      elevation: selected ? 2 : 1,
+                    }}
+                  >
+                    <View className="p-5">
+                      <View className="flex-row items-center justify-between mb-3">
+                        <Text className="text-base font-bold text-black flex-1 pr-3" numberOfLines={1}>
+                          {room.room_title || `Room #${room.room_id}`}
+                        </Text>
+                        <Text className="text-black font-bold text-lg">{room.percentage}%</Text>
+                      </View>
+                      <Text className="text-gray-500 text-xs mb-3">ID: {room.room_id}</Text>
+                      {room.recommended ? (
+                        <View className="self-start px-3 py-1 rounded-full bg-black mb-3">
+                          <Text className="text-white text-xs font-bold">RECOMMENDED</Text>
+                        </View>
+                      ) : null}
+                      <Text className="text-gray-600 text-sm" numberOfLines={2}>
+                        {Array.isArray(room.reasons) ? room.reasons.join(' • ') : ''}
+                      </Text>
                     </View>
-                  ) : null}
-                  <Text className="text-slate-600 text-xs" numberOfLines={2}>
-                    {Array.isArray(room.reasons) ? room.reasons.join(' • ') : ''}
+                  </TouchableOpacity>
+                );
+              })}
+              {candidateRooms.length > 2 ? (
+                <TouchableOpacity
+                  onPress={() => setShowAllCandidates(prev => !prev)}
+                  className="mt-1 self-start px-4 py-2 rounded-lg border border-gray-300 bg-white"
+                >
+                  <Text className="text-gray-700 text-sm font-semibold">
+                    {showAllCandidates ? 'See less' : `See more (${candidateRooms.length - 2} more)`}
                   </Text>
                 </TouchableOpacity>
-              );
-            })}
-            {candidateRooms.length > 2 ? (
-              <TouchableOpacity
-                onPress={() => setShowAllCandidates(prev => !prev)}
-                className="mt-1 self-start px-3 py-2 rounded-lg border border-slate-300 bg-white"
-              >
-                <Text className="text-slate-700 text-xs font-semibold">
-                  {showAllCandidates ? 'See less' : `See more (${candidateRooms.length - 2} more)`}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : (
-          <View className="bg-amber-50 rounded-xl p-4 mb-4 border border-amber-200">
-            <Text className="text-amber-900 font-semibold mb-1">Waiting for match</Text>
-            <Text className="text-amber-800 text-sm">
-              We created a room for you. You can wait here or join the closest option below.
-            </Text>
-            {closestRoom ? (
-              <TouchableOpacity
-                onPress={() => setSelectedRoomId(String(closestRoom.room_id || ''))}
-                className="mt-3 p-3 rounded-lg border border-amber-300 bg-white"
-              >
-                <Text className="text-slate-900 font-semibold">
-                  Closest option: {closestRoom.room_title || `Room #${closestRoom.room_id}`}
-                </Text>
-                <Text className="text-slate-600 text-xs mt-1">{closestRoom.percentage}% match</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
+              ) : null}
+            </View>
+          ) : (
+            <View className="bg-yellow-50 rounded-lg p-5 mb-6 border border-yellow-200">
+              <Text className="text-black font-bold mb-2 text-sm">Waiting for match</Text>
+              <Text className="text-black text-sm mb-3">
+                We created a room for you. You can wait here or join the closest option below.
+              </Text>
+              {closestRoom ? (
+                <TouchableOpacity
+                  onPress={() => setSelectedRoomId(String(closestRoom.room_id || ''))}
+                  className="mt-2 p-4 rounded-lg border border-gray-300 bg-white"
+                >
+                  <Text className="text-black font-bold text-sm">
+                    Closest option: {closestRoom.room_title || `Room #${closestRoom.room_id}`}
+                  </Text>
+                  <Text className="text-gray-600 text-xs mt-1">{closestRoom.percentage}% match</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
 
-        {matchMessage ? (
-          <Text className="text-blue-700 text-sm">{matchMessage}</Text>
+          {matchMessage ? (
+            <Text className="text-gray-700 text-sm mb-6">{matchMessage}</Text>
+          ) : null}
+        </View>
+
+        {!isLoading ? (
+          <TouchableOpacity
+            onPress={() => setJoinAnonymously(prev => !prev)}
+            className="mb-6 flex-row items-center"
+          >
+            <View
+              className={`w-6 h-6 rounded border-2 mr-3 items-center justify-center ${
+                joinAnonymously ? 'bg-black border-black' : 'bg-white border-gray-300'
+              }`}
+            >
+              {joinAnonymously ? <Text className="text-white text-xs font-extrabold">✓</Text> : null}
+            </View>
+            <View>
+              <Text className="text-sm font-semibold text-black">
+                Join anonymously
+              </Text>
+              {joinAnonymously ? (
+                <Text className="text-xs text-gray-600">Anonymous mode is enabled</Text>
+              ) : null}
+            </View>
+          </TouchableOpacity>
         ) : null}
-      </View>
 
-      {!isLoading ? (
-        <TouchableOpacity
-          onPress={() => setJoinAnonymously(prev => !prev)}
-          className={`mt-2 mb-2 flex-row items-center self-start px-3 py-2 rounded-xl border-2 ${
-            joinAnonymously ? 'bg-blue-50 border-blue-500' : 'bg-white border-slate-300'
-          }`}
-        >
-          <View
-            className={`w-7 h-7 rounded-md border-2 mr-3 items-center justify-center ${
-              joinAnonymously ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-400'
+        {!isLoading ? (
+          <TouchableOpacity
+            onPress={handleCreateOwnRoom}
+            disabled={isCreatingOwnRoom}
+            className={`py-4 rounded-lg mb-3 border ${
+              isCreatingOwnRoom ? 'bg-gray-100 border-gray-200' : 'bg-white border-gray-300'
             }`}
           >
-            {joinAnonymously ? <Text className="text-white text-sm font-extrabold">✓</Text> : null}
-          </View>
-          <View>
-            <Text className={`text-sm font-semibold ${joinAnonymously ? 'text-blue-700' : 'text-slate-700'}`}>
-              Join anonymously
+            <Text className={`text-center font-bold text-sm ${isCreatingOwnRoom ? 'text-gray-500' : 'text-black'}`}>
+              {isCreatingOwnRoom ? 'Creating your room...' : 'Create Your Own Room'}
             </Text>
-            {joinAnonymously ? (
-              <Text className="text-xs text-blue-700">Anonymous mode ON (you will get a hidden alias)</Text>
-            ) : null}
-          </View>
-        </TouchableOpacity>
-      ) : null}
+          </TouchableOpacity>
+        ) : null}
 
-      {!isLoading ? (
         <TouchableOpacity
-          onPress={handleCreateOwnRoom}
-          disabled={isCreatingOwnRoom}
-          className={`py-4 rounded-xl mt-3 border-2 ${
-            isCreatingOwnRoom ? 'bg-slate-100 border-slate-200' : 'bg-white border-blue-200'
-          }`}
+          onPress={handleJoinCommunityRoom}
+          disabled={isJoining}
+          className={`py-5 rounded-lg mb-3 ${isJoining ? 'bg-gray-400' : 'bg-black'}`}
         >
-          <Text className={`text-center font-bold ${isCreatingOwnRoom ? 'text-slate-500' : 'text-blue-700'}`}>
-            {isCreatingOwnRoom ? 'Creating your room...' : 'Create Your Own Room'}
+          <Text className="text-white text-center text-base font-bold">
+            {isJoining ? 'Joining...' : 'Join Selected Room'}
           </Text>
         </TouchableOpacity>
-      ) : null}
 
-      <TouchableOpacity
-        onPress={handleJoinCommunityRoom}
-        disabled={isJoining}
-        className={`py-5 rounded-xl mt-3 ${isJoining ? 'bg-blue-300' : 'bg-blue-600'}`}
-      >
-        <Text className="text-white text-center text-lg font-bold">
-          {isJoining ? 'Joining...' : 'Join Selected Room'}
-        </Text>
-      </TouchableOpacity>
+        {joinError ? (
+          <View className="bg-red-600 px-5 py-4 rounded-lg mb-3">
+            <Text className="text-white font-bold text-sm">{joinError}</Text>
+          </View>
+        ) : null}
+        
+        {matchingError ? (
+          <View className="bg-yellow-400 px-5 py-4 rounded-lg mb-3">
+            <Text className="text-black font-bold text-sm">{matchingError}</Text>
+          </View>
+        ) : null}
 
-      {joinError ? <Text className="text-red-600 text-center text-sm mt-3">{joinError}</Text> : null}
-      {matchingError ? <Text className="text-amber-700 text-center text-sm mt-3">{matchingError}</Text> : null}
-
-      <TouchableOpacity onPress={() => navigate('intake')} className="mt-4 py-3">
-        <Text className="text-slate-500 text-center font-medium">Try different match</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigate('intake')} className="py-3">
+          <Text className="text-gray-500 text-center font-medium text-sm">Try different match</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 };

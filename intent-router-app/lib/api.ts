@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const LAN_BACKEND_URL = 'http://192.168.3.1:4000';
+const LAN_BACKEND_URL = 'http://localhost:4000';
 
 export const API_BASE_URL = (() => {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();

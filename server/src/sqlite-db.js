@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { SQLITE_DB_PATH } from "./config.js";
 
 let db;
 let initializedPath = "";
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const serverRootDir = resolve(moduleDir, "..");
 
 function randomEmail() {
   const name = randomUUID().replace(/-/g, "").slice(0, 8);
@@ -114,6 +117,7 @@ function initSchema(database) {
   ensureColumn(database, "Request", "mode", "TEXT");
   ensureColumn(database, "Request", "topic_label", "TEXT");
   ensureColumn(database, "Request", "location", "TEXT");
+  ensureColumn(database, "Request", "community_id", "TEXT");
   ensureColumn(database, "Request", "room_id", "TEXT");
   ensureColumn(database, "Request", "topic_room_id", "TEXT");
   ensureColumn(database, "Request", "matched_at", "TEXT");
@@ -136,7 +140,7 @@ export function getSqliteDatabase() {
   if (db) return db;
 
   const dbPath = String(SQLITE_DB_PATH || "data/data.db").trim() || "data/data.db";
-  const absolutePath = resolve(dbPath);
+  const absolutePath = isAbsolute(dbPath) ? dbPath : resolve(serverRootDir, dbPath);
   mkdirSync(dirname(absolutePath), { recursive: true });
 
   db = new DatabaseSync(absolutePath);
@@ -234,4 +238,26 @@ export function upsertCommunities(communities) {
   }
 
   return rows.length;
+}
+
+export function clearSqliteDatabase() {
+  const database = getSqliteDatabase();
+
+  database.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+    DELETE FROM Room_Request;
+    DELETE FROM Document;
+    DELETE FROM Request;
+    DELETE FROM Rooms;
+    DELETE FROM User_External_Map;
+    DELETE FROM Users;
+    DELETE FROM Communities;
+    DELETE FROM sqlite_sequence
+      WHERE name IN ('Users', 'Rooms', 'Request', 'Document');
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+
+  return { provider: "sqlite", ok: true };
 }

@@ -40,8 +40,12 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
       });
 
       const topicLabel = String(classified?.topic_label || '').trim();
-      const tags = Array.isArray(classified?.tags) ? classified.tags : [];
-      const matchTopic = [topicLabel, ...tags].filter(Boolean).join(', ');
+      const normalizedTopicLabel = topicLabel.toLowerCase();
+      const isGenericTopicLabel =
+        !topicLabel ||
+        normalizedTopicLabel === 'community request' ||
+        normalizedTopicLabel === 'help request';
+      const matchTopic = isGenericTopicLabel ? contextText : topicLabel;
 
       setSessionData({
         ...sessionData,
@@ -51,7 +55,7 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
         needText: trimmedNeed,
         module: module || 'General',
         urgency,
-        matchTopic: matchTopic || contextText,
+        matchTopic,
         similarity: 0,
         userRole: 'seeking',
       });
@@ -65,99 +69,104 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
   };
 
   return (
-    <ScrollView className="flex-1 bg-slate-50">
-      <View className="px-6 py-8">
+    <ScrollView className="flex-1 bg-white">
+      <View className="px-6 py-12 max-w-3xl mx-auto w-full">
         <TouchableOpacity
           onPress={() => navigate(sessionData.returnScreen || 'dashboard')}
-          className="mb-4 flex-row items-center"
+          className="mb-8 flex-row items-center"
         >
-          <Text className="text-blue-600 text-lg mr-2">←</Text>
-          <Text className="text-blue-600 font-semibold">Back</Text>
+          <Text className="text-black text-lg mr-2">←</Text>
+          <Text className="text-black font-semibold text-sm">Back</Text>
         </TouchableOpacity>
 
         {/* Header */}
-        <View className="mb-8">
-          <Text className="text-3xl font-bold text-slate-900 mb-2">
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+            {sessionData.selectedCommunity}
+          </Text>
+          <Text className="text-2xl font-bold text-black mb-2">
             What do you need help with?
           </Text>
-          <Text className="text-slate-600">
+          <Text className="text-sm text-gray-600">
             We'll match you with someone who understands
-          </Text>
-          <Text className="text-blue-700 font-semibold mt-2">
-            Community: {sessionData.selectedCommunity}
           </Text>
         </View>
 
         {/* Main Input */}
-        <View className="mb-6">
-          <Text className="text-sm font-semibold text-slate-700 mb-3">
-            Describe your need
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-black uppercase tracking-wider mb-6">
+            Your Request
           </Text>
-          <TextInput
-            value={needText}
-            onChangeText={setNeedText}
-            multiline
-            numberOfLines={4}
-            className="bg-white border-2 border-slate-200 rounded-xl px-4 py-4 text-base text-slate-900"
-            placeholder="e.g. recursion, calculus exam prep, lab report"
-            placeholderTextColor="#94a3b8"
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Module Selection */}
-        <View className="mb-6">
-          <Text className="text-sm font-semibold text-slate-700 mb-3">
-            Module / Subject (optional)
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {modules.map(mod => (
-              <TouchableOpacity
-                key={mod}
-                onPress={() => setModule(mod)}
-                className={`px-4 py-2 rounded-full border-2 ${
-                  module === mod
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-              >
-                <Text
-                  className={`font-medium ${
-                    module === mod ? 'text-blue-600' : 'text-slate-700'
-                  }`}
-                >
-                  {mod}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View className="mb-6">
+            <Text className="text-sm font-semibold text-black mb-3">
+              Describe your need *
+            </Text>
+            <TextInput
+              value={needText}
+              onChangeText={setNeedText}
+              multiline
+              numberOfLines={4}
+              className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-4 text-base text-black"
+              placeholder="e.g. recursion, calculus exam prep, lab report"
+              placeholderTextColor="#A3A3A3"
+              textAlignVertical="top"
+            />
           </View>
-        </View>
 
-        {/* Urgency */}
-        <View className="mb-8">
-          <Text className="text-sm font-semibold text-slate-700 mb-3">
-            When do you need help?
-          </Text>
-          <View className="flex-row gap-2">
-            {urgencies.map(urg => (
-              <TouchableOpacity
-                key={urg}
-                onPress={() => setUrgency(urg)}
-                className={`flex-1 py-3 rounded-xl border-2 ${
-                  urgency === urg
-                    ? 'border-blue-600 bg-blue-600'
-                    : 'border-slate-200 bg-white'
-                }`}
-              >
-                <Text
-                  className={`text-center font-semibold ${
-                    urgency === urg ? 'text-white' : 'text-slate-700'
+          {/* Module Selection */}
+          <View className="mb-6">
+            <Text className="text-sm font-semibold text-black mb-3">
+              Module / Subject <Text className="text-gray-500 font-normal">(optional)</Text>
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {modules.map(mod => (
+                <TouchableOpacity
+                  key={mod}
+                  onPress={() => setModule(mod)}
+                  className={`px-4 py-2.5 rounded-lg border ${
+                    module === mod
+                      ? 'border-black bg-gray-50'
+                      : 'border-gray-200 bg-white'
                   }`}
                 >
-                  {urg}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    className={`font-semibold text-sm ${
+                      module === mod ? 'text-black' : 'text-gray-700'
+                    }`}
+                  >
+                    {mod}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Urgency */}
+          <View className="mb-6">
+            <Text className="text-sm font-semibold text-black mb-3">
+              When do you need help? *
+            </Text>
+            <View className="flex-row gap-2">
+              {urgencies.map(urg => (
+                <TouchableOpacity
+                  key={urg}
+                  onPress={() => setUrgency(urg)}
+                  className={`flex-1 py-3.5 rounded-lg ${
+                    urgency === urg
+                      ? 'bg-black'
+                      : 'bg-white border border-gray-200'
+                  }`}
+                >
+                  <Text
+                    className={`text-center font-bold text-sm ${
+                      urgency === urg ? 'text-white' : 'text-gray-700'
+                    }`}
+                  >
+                    {urg}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
@@ -165,19 +174,21 @@ const IntakeScreen = ({ navigate, sessionData, setSessionData }: IntakeScreenPro
         <TouchableOpacity
           onPress={handleFindMatch}
           disabled={!needText.trim() || isSubmitting}
-          className={`py-5 rounded-xl ${
-            needText.trim() && !isSubmitting ? 'bg-blue-600' : 'bg-slate-300'
+          className={`py-5 rounded-lg mb-3 ${
+            needText.trim() && !isSubmitting ? 'bg-black' : 'bg-gray-300'
           }`}
         >
-          <Text className="text-white text-center text-lg font-bold">
+          <Text className="text-white text-center text-base font-bold">
             {isSubmitting ? 'Analyzing...' : 'Find Match'}
           </Text>
         </TouchableOpacity>
 
         {submitError ? (
-          <Text className="text-red-600 text-center text-sm mt-3">
-            {submitError}
-          </Text>
+          <View className="bg-red-600 px-5 py-4 rounded-lg">
+            <Text className="text-white font-bold text-sm">
+              {submitError}
+            </Text>
+          </View>
         ) : null}
       </View>
     </ScrollView>

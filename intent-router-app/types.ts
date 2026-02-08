@@ -11,6 +11,8 @@ export type Room = {
   id: string;
   communityId: string;
   name: string;
+  mode?: 'help' | 'offer' | 'group';
+  tags?: string[];
   createdAt: string;
   participants: Array<{
     id: string;

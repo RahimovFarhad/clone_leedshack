@@ -9,32 +9,33 @@ type HomeScreenProps = {
 
 const HomeScreen = ({ navigate, sessionData }: HomeScreenProps) => {
   return (
-    <View className="flex-1 bg-gradient-to-b from-blue-50 to-slate-50 justify-center px-6">
-      <View className="items-center mb-12">
-        <View className="w-20 h-20 bg-blue-500 rounded-full items-center justify-center mb-6">
-          <Text className="text-white text-3xl">🤝</Text>
+    <View className="flex-1 bg-white justify-center px-6">
+      <View className="max-w-xl mx-auto w-full">
+        <View className="items-center mb-16">
+          <View className="w-24 h-24 bg-black rounded-full items-center justify-center mb-8">
+            <Text className="text-white text-4xl">🤝</Text>
+          </View>
+          <Text className="text-3xl font-bold text-black text-center mb-3 leading-tight">
+            {sessionData.selectedCommunity || 'Your Community'}
+          </Text>
+          <Text className="text-sm text-gray-600 text-center">
+            You are part of an active support network
+          </Text>
         </View>
 
-        <Text className="text-3xl font-bold text-slate-900 text-center mb-4 leading-tight">
-          {sessionData.selectedCommunity || 'Your Community'}
-        </Text>
-        <Text className="text-slate-600 text-center">
-          You are part of an active support network
+        <TouchableOpacity
+          onPress={() => navigate('dashboard')}
+          className="bg-black py-5 rounded-lg mb-4"
+        >
+          <Text className="text-white text-center text-base font-bold">
+            Open Dashboard
+          </Text>
+        </TouchableOpacity>
+
+        <Text className="text-gray-400 text-center mt-6 text-sm">
+          Ask for help or offer help to others
         </Text>
       </View>
-
-      <TouchableOpacity
-        onPress={() => navigate('dashboard')}
-        className="bg-blue-600 py-5 rounded-2xl shadow-lg"
-      >
-        <Text className="text-white text-center text-xl font-bold">
-          Open Dashboard
-        </Text>
-      </TouchableOpacity>
-
-      <Text className="text-slate-400 text-center mt-8 text-sm">
-        Ask for help or offer help to others
-      </Text>
     </View>
   );
 };

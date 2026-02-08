@@ -151,68 +151,94 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
     }
   };
 
+  const getRoomBadge = (room: Room) => {
+    if (room.mode === 'offer') {
+      return {
+        label: 'CAN HELP',
+        containerClass: 'bg-emerald-200',
+        textClass: 'text-emerald-900',
+      };
+    }
+    if (room.mode === 'group') {
+      return {
+        label: 'GROUP',
+        containerClass: 'bg-blue-200',
+        textClass: 'text-blue-900',
+      };
+    }
+    return {
+      label: 'NEEDS HELP',
+      containerClass: 'bg-yellow-400',
+      textClass: 'text-black',
+    };
+  };
+
   return (
-    <ScrollView className="flex-1 bg-slate-50">
-      <View className="px-6 py-8">
+    <ScrollView className="flex-1 bg-white">
+      <View className="px-6 py-12 max-w-3xl mx-auto w-full">
         {/* Header */}
-        <View className="mb-8">
-          <Text className="text-sm text-blue-700 font-semibold mb-2">
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
             {sessionData.selectedCommunity}
           </Text>
-          <Text className="text-3xl font-bold text-slate-900 mb-2">
+          <Text className="text-2xl font-bold text-black mb-2">
             Community Dashboard
           </Text>
-          <Text className="text-slate-600">
+          <Text className="text-sm text-gray-600">
             Join rooms, ask for help, or support someone who is waiting
           </Text>
         </View>
 
         {/* Key Metrics */}
-        <View className="flex-row flex-wrap gap-3 mb-6">
-          <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-blue-100">
-            <Text className="text-sm text-slate-600 mb-1">Active Rooms</Text>
-            <Text className="text-3xl font-bold text-blue-600">{rooms.length}</Text>
-          </View>
-          <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-green-100">
-            <Text className="text-sm text-slate-600 mb-1">Participants</Text>
-            <Text className="text-3xl font-bold text-green-600">{rooms.reduce((count, room) => count + room.participants.length, 0)}</Text>
-          </View>
-          <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-purple-100">
-            <Text className="text-sm text-slate-600 mb-1">Open Spots</Text>
-            <Text className="text-3xl font-bold text-purple-600">
-              {rooms.reduce((count, room) => count + Math.max(0, 2 - room.participants.length), 0)}
-            </Text>
-          </View>
-          <View className="flex-1 min-w-[45%] bg-white rounded-xl p-4 border-2 border-orange-100">
-            <Text className="text-sm text-slate-600 mb-1">Your Current Room</Text>
-            <Text className="text-xl font-bold text-orange-600">
-              {sessionData.roomId ? '1' : '0'}
-            </Text>
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-black uppercase tracking-wider mb-6">
+            Overview
+          </Text>
+          <View className="flex-row flex-wrap gap-3">
+            <View className="flex-1 min-w-[45%] bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <Text className="text-sm text-gray-600 mb-1">Active Rooms</Text>
+              <Text className="text-3xl font-bold text-black">{rooms.length}</Text>
+            </View>
+            <View className="flex-1 min-w-[45%] bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <Text className="text-sm text-gray-600 mb-1">Participants</Text>
+              <Text className="text-3xl font-bold text-black">{rooms.reduce((count, room) => count + room.participants.length, 0)}</Text>
+            </View>
+            <View className="flex-1 min-w-[45%] bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <Text className="text-sm text-gray-600 mb-1">Open Spots</Text>
+              <Text className="text-3xl font-bold text-black">
+                {rooms.reduce((count, room) => count + Math.max(0, 2 - room.participants.length), 0)}
+              </Text>
+            </View>
+            <View className="flex-1 min-w-[45%] bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <Text className="text-sm text-gray-600 mb-1">Your Current Room</Text>
+              <Text className="text-3xl font-bold text-black">
+                {sessionData.roomId ? '1' : '0'}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Active Rooms */}
-        <View className="bg-white rounded-2xl p-6 mb-6 border-2 border-slate-100">
-          <Text className="text-lg font-bold text-slate-900 mb-4">
-            Rooms Active Right Now
+        {/* Create Room Section */}
+        {/* <View className="mb-12">
+          <Text className="text-xs font-bold text-black uppercase tracking-wider mb-6">
+            Create Room
           </Text>
-
-          <View className="mb-4">
-            <Text className="text-sm text-slate-600 mb-2">Create a new room</Text>
+          <View className="mb-6">
+            <Text className="text-sm font-semibold text-black mb-3">Room Name *</Text>
             <View className="flex-row gap-2">
               <TextInput
                 value={newRoomName}
                 onChangeText={setNewRoomName}
-                className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900"
+                className="flex-1 bg-gray-50 rounded-lg px-4 py-4 text-base text-black border border-gray-200"
                 placeholder="e.g. CS101 study session"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor="#A3A3A3"
               />
               <TouchableOpacity
                 onPress={handleCreateRoom}
                 disabled={isCreating}
-                className={`px-4 rounded-xl items-center justify-center ${isCreating ? 'bg-blue-300' : 'bg-blue-600'}`}
+                className={`px-6 rounded-lg items-center justify-center ${isCreating ? 'bg-gray-400' : 'bg-black'}`}
               >
-                <Text className="text-white font-semibold">
+                <Text className="text-white font-bold text-sm">
                   {isCreating ? 'Creating' : 'Create'}
                 </Text>
               </TouchableOpacity>
@@ -220,131 +246,158 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
           </View>
 
           <View className="mb-4">
-            <Text className="text-sm text-slate-600 mb-2">Display name (optional)</Text>
+            <Text className="text-sm font-semibold text-black mb-3">
+              Display Name <Text className="text-gray-500 font-normal">(optional)</Text>
+            </Text>
             <TextInput
               value={displayName}
               onChangeText={setDisplayName}
               editable={!joinAnonymously}
-              className={`rounded-xl px-4 py-3 text-base ${
-                joinAnonymously ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-900'
+              className={`rounded-lg px-4 py-4 text-base border ${
+                joinAnonymously ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-50 text-black border-gray-200'
               }`}
               placeholder={joinAnonymously ? 'Anonymous' : 'Guest'}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor="#A3A3A3"
             />
             <TouchableOpacity
               onPress={() => setJoinAnonymously(prev => !prev)}
-              className={`mt-3 flex-row items-center self-start px-3 py-2 rounded-xl border-2 ${
-                joinAnonymously ? 'bg-blue-50 border-blue-500' : 'bg-white border-slate-300'
-              }`}
+              className="mt-4 flex-row items-center"
             >
               <View
-                className={`w-7 h-7 rounded-md border-2 mr-3 items-center justify-center ${
-                  joinAnonymously ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-400'
+                className={`w-6 h-6 rounded border-2 mr-3 items-center justify-center ${
+                  joinAnonymously ? 'bg-black border-black' : 'bg-white border-gray-300'
                 }`}
               >
-                {joinAnonymously ? <Text className="text-white text-sm font-extrabold">✓</Text> : null}
+                {joinAnonymously ? <Text className="text-white text-xs font-extrabold">✓</Text> : null}
               </View>
               <View>
-                <Text className={`text-sm font-semibold ${joinAnonymously ? 'text-blue-700' : 'text-slate-700'}`}>
+                <Text className="text-sm font-semibold text-black">
                   Join anonymously
                 </Text>
                 {joinAnonymously ? (
-                  <Text className="text-xs text-blue-700">Anonymous mode ON (hidden alias enabled)</Text>
+                  <Text className="text-xs text-gray-600">Anonymous mode is enabled</Text>
                 ) : null}
               </View>
             </TouchableOpacity>
           </View>
 
           {actionError ? (
-            <Text className="text-red-600 text-sm mb-3">{actionError}</Text>
+            <View className="bg-red-600 px-5 py-4 rounded-lg mt-4">
+              <Text className="text-white font-bold text-sm">{actionError}</Text>
+            </View>
           ) : null}
+        </View> */}
+
+        {/* Active Rooms Section */}
+        <View className="mb-12">
+          <Text className="text-xs font-bold text-black uppercase tracking-wider mb-2">
+            Active Rooms
+          </Text>
+          <Text className="text-sm text-gray-600 mb-6">
+            {!isLoading && !loadError ? `${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'} available` : ''}
+          </Text>
 
           {isLoading ? (
-            <View className="py-6 items-center">
-              <ActivityIndicator size="large" color="#2563eb" />
-              <Text className="text-slate-500 mt-3">Loading rooms...</Text>
+            <View className="py-24 items-center">
+              <ActivityIndicator size="large" color="#000000" />
+              <Text className="text-gray-600 mt-5 text-sm">Loading rooms...</Text>
             </View>
           ) : null}
 
           {!isLoading && loadError ? (
-            <View className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <Text className="text-red-700 font-semibold">{loadError}</Text>
+            <View className="bg-red-600 px-6 py-5 rounded-lg">
+              <Text className="text-white font-bold text-sm mb-2">Error</Text>
+              <Text className="text-white text-sm">{loadError}</Text>
             </View>
           ) : null}
 
           {!isLoading && !loadError && rooms.length === 0 ? (
-            <View className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <Text className="text-slate-600">No active rooms yet. Create one above.</Text>
+            <View className="bg-gray-50 rounded-lg px-5 py-6 border border-gray-200">
+              <Text className="text-gray-600 text-sm text-center">No active rooms yet. Create one above.</Text>
             </View>
           ) : null}
 
-          {!isLoading && !loadError && rooms.map(room => (
-            <View key={room.id} className="mb-4 last:mb-0 bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <View className="flex-row justify-between items-center mb-3">
-                <View className="flex-1 pr-3">
-                  <Text className="text-slate-900 font-bold">
-                    {room.name}
-                  </Text>
-                  <Text className="text-slate-600 text-sm">
-                    {room.participants.length} participant{room.participants.length === 1 ? '' : 's'}
-                  </Text>
-                </View>
-                {room.participants.length < 2 && (
-                  <View className="bg-amber-100 px-2 py-1 rounded-full">
-                    <Text className="text-amber-700 text-xs font-semibold">Needs helpers</Text>
+          {!isLoading && !loadError && rooms.map(room => {
+            const badge = getRoomBadge(room);
+            return (
+            <View
+              key={room.id} 
+              className="mb-3 bg-white rounded-2xl overflow-hidden border border-gray-100"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <View className="px-6 py-6">
+                <View className="flex-row justify-between items-start mb-4">
+                  <View className="flex-1 pr-4">
+                    <Text className="text-xl font-bold text-black mb-2">
+                      {room.name}
+                    </Text>
+                    <Text className="text-sm text-gray-500">
+                      {room.participants.length} participant{room.participants.length === 1 ? '' : 's'}
+                    </Text>
                   </View>
-                )}
-              </View>
-              <View className="flex-row gap-2">
-                <TouchableOpacity
-                  onPress={() => handleJoinRoom(room, 'helping')}
-                  className="flex-1 bg-emerald-600 py-2.5 rounded-lg"
-                >
-                  <Text className="text-white text-center font-semibold">
-                    Help in this room
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleJoinRoom(room, 'seeking')}
-                  className="flex-1 bg-blue-600 py-2.5 rounded-lg"
-                >
-                  <Text className="text-white text-center font-semibold">
-                    Join room
-                  </Text>
-                </TouchableOpacity>
+                  <View className={`${badge.containerClass} px-3 py-1.5 rounded-full`}>
+                    <Text className={`${badge.textClass} text-xs font-bold`}>{badge.label}</Text>
+                  </View>
+                </View>
+                <View className="flex-row gap-3">
+                  <TouchableOpacity
+                    onPress={() => handleJoinRoom(room, 'helping')}
+                    className="flex-1 bg-black py-3.5 rounded-lg"
+                  >
+                    <Text className="text-white text-center font-bold text-sm">
+                      Help in Room
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleJoinRoom(room, 'seeking')}
+                    className="flex-1 bg-gray-900 py-3.5 rounded-lg"
+                  >
+                    <Text className="text-white text-center font-bold text-sm">
+                      Join Room
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          ))}
+          )})}
         </View>
 
         {/* Actions */}
-        <TouchableOpacity
-          onPress={() => {
-            setSessionData(prev => ({
-              ...prev,
-              userRole: 'seeking',
-              returnScreen: 'dashboard',
-            }));
-            navigate('intake');
-          }}
-          className="bg-blue-600 py-5 rounded-xl mb-3"
-        >
-          <Text className="text-white text-center text-lg font-bold">
-            Ask For Help
-          </Text>
-        </TouchableOpacity>
+        <View className="mb-6">
+          <TouchableOpacity
+            onPress={() => {
+              setSessionData(prev => ({
+                ...prev,
+                userRole: 'seeking',
+                returnScreen: 'dashboard',
+              }));
+              navigate('intake');
+            }}
+            className="bg-black py-5 rounded-lg mb-3"
+          >
+            <Text className="text-white text-center text-base font-bold">
+              Ask For Help
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => navigate('community')}
-          className="bg-white py-4 rounded-xl mb-3 border-2 border-slate-200"
-        >
-          <Text className="text-slate-800 text-center font-bold">
-            Switch Community
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigate('community')}
+            className="bg-white py-4 rounded-lg border border-gray-300"
+          >
+            <Text className="text-black text-center font-bold text-base">
+              Switch Community
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        <View className="bg-slate-100 rounded-xl p-4 border border-slate-200">
-          <Text className="text-sm text-slate-600 text-center">
+        <View className="bg-gray-100 rounded-lg px-5 py-4">
+          <Text className="text-sm text-gray-600 text-center">
             This space is always active. You can both request and provide help.
           </Text>
         </View>
