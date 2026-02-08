@@ -36,7 +36,7 @@ Default base URL: `http://localhost:4000`
 - `POST /api/classify-intent`
 - `POST /post-request`
   - Response now includes:
-    - `match_status`: `candidates` when room options are available, otherwise `waiting`
+ main
     - `is_creator`: `true` when user created a new waiting room
     - `matched_existing_room`: `true` when assigned into requester's existing room
     - `message`: user-facing status text
@@ -60,5 +60,5 @@ Default base URL: `http://localhost:4000`
 - `POST /post-request` derives location from request text only when a clear location phrase is detected, and returns `score_breakdown` for direct matches.
 - `POST /post-request` now returns ranked room options:
   - `candidate_rooms`: qualifying rooms with `percentage` and `recommended`
-  - `match_status`: `candidates` when qualifying rooms exist, otherwise `waiting`
+  - `match_status`: `matched` when qualifying rooms exist, `candidates` when only nearby rooms exist, otherwise `waiting`
   - `closest_room`: returned when no qualifying room exists

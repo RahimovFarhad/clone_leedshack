@@ -300,10 +300,11 @@ app.post("/post-request", async (req, res) => {
         candidateCount: candidateRooms.length,
         bestRoomId: String(candidateRooms[0].room_id)
       });
+      const matchStatus = qualifyingRooms.length > 0 ? "matched" : "candidates";
       return res.json({
         room_id: String(candidateRooms[0].room_id),
         waiting_room_id: null,
-        match_status: "candidates",
+        match_status: matchStatus,
         has_qualifying_match: qualifyingRooms.length > 0,
         matched_existing_room: true,
         is_creator: false,

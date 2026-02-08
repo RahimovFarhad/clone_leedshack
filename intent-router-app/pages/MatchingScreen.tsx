@@ -93,7 +93,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
         setCandidateRooms(rooms);
         setShowAllCandidates(false);
         setClosestRoom(closest);
-        if (nextStatus === 'candidates' && bestPercentage < AUTO_SELECT_THRESHOLD) {
+        if ((nextStatus === 'candidates' || nextStatus === 'matched') && bestPercentage < AUTO_SELECT_THRESHOLD) {
           setSelectedRoomId('');
           setSelectionGuidance(
             `${bestPercentage}% is the best we can do right now. You can join one of the existing rooms or create your own.`
@@ -280,7 +280,7 @@ const MatchingScreen = ({ navigate, sessionData, setSessionData }: MatchingScree
             <Text className="text-lg font-bold text-black">{sessionData.matchTopic}</Text>
           </View>
 
-          {matchStatus === 'candidates' ? (
+          {matchStatus === 'candidates' || matchStatus === 'matched' ? (
             <View className="mb-6">
               <Text className="text-sm text-gray-700 mb-4">
                 Here are the close rooms we found for you, but you can also create and wait in your own room too.
