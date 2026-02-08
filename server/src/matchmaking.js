@@ -50,14 +50,14 @@ function locationScore(newRequest, candidate, overlapTags) {
   const b = resolveLocation(candidate);
 
   if (a && b && a === b) {
-    return 10;
+    return 35;
   }
 
   const locationTagSet = new Set(
     LOCATION_TAGS.map((tag) => String(tag || "").trim().toLowerCase())
   );
   const sharedLocationTag = overlapTags.some((tag) => locationTagSet.has(tag));
-  return sharedLocationTag ? 5 : 0;
+  return sharedLocationTag ? 20 : 0;
 }
 
 function urgencyScore(newRequest, candidate) {

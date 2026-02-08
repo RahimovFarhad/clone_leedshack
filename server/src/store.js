@@ -120,8 +120,14 @@ async function getMongoCollections() {
     );
   }
 
-  const { MongoClient } = mongodb;
-  mongoClient = new MongoClient(MONGODB_URI);
+  const { MongoClient, ServerApiVersion } = mongodb;
+  mongoClient = new MongoClient(MONGODB_URI, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true
+    }
+  });
   await mongoClient.connect();
   mongoDb = mongoClient.db(MONGODB_DB_NAME);
 

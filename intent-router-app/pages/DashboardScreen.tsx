@@ -23,6 +23,7 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
   const [loadError, setLoadError] = useState('');
   const [newRoomName, setNewRoomName] = useState('');
   const [displayName, setDisplayName] = useState(sessionData.participantName || '');
+  const [joinAnonymously, setJoinAnonymously] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -128,7 +129,7 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
   const handleJoinRoom = async (room: Room, role: 'seeking' | 'helping') => {
     try {
       setActionError('');
-      const resolvedName = displayName.trim() || 'Guest';
+      const resolvedName = joinAnonymously ? 'Anonymous' : (displayName.trim() || 'Guest');
       const payload = { displayName: resolvedName };
       const data = await requestJson(`/rooms/${room.id}/join`, {
         method: 'POST',
@@ -223,10 +224,35 @@ const DashboardScreen = ({ navigate, sessionData, setSessionData }: DashboardScr
             <TextInput
               value={displayName}
               onChangeText={setDisplayName}
-              className="bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900"
-              placeholder="Guest"
+              editable={!joinAnonymously}
+              className={`rounded-xl px-4 py-3 text-base ${
+                joinAnonymously ? 'bg-slate-200 text-slate-500' : 'bg-slate-100 text-slate-900'
+              }`}
+              placeholder={joinAnonymously ? 'Anonymous' : 'Guest'}
               placeholderTextColor="#94a3b8"
             />
+            <TouchableOpacity
+              onPress={() => setJoinAnonymously(prev => !prev)}
+              className={`mt-3 flex-row items-center self-start px-3 py-2 rounded-xl border-2 ${
+                joinAnonymously ? 'bg-blue-50 border-blue-500' : 'bg-white border-slate-300'
+              }`}
+            >
+              <View
+                className={`w-7 h-7 rounded-md border-2 mr-3 items-center justify-center ${
+                  joinAnonymously ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-400'
+                }`}
+              >
+                {joinAnonymously ? <Text className="text-white text-sm font-extrabold">✓</Text> : null}
+              </View>
+              <View>
+                <Text className={`text-sm font-semibold ${joinAnonymously ? 'text-blue-700' : 'text-slate-700'}`}>
+                  Join anonymously
+                </Text>
+                {joinAnonymously ? (
+                  <Text className="text-xs text-blue-700">Anonymous mode ON (hidden alias enabled)</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
           </View>
 
           {actionError ? (

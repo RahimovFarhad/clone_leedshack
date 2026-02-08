@@ -5,22 +5,21 @@ import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
 import { classifyIntent } from "./agent.js";
 import { ALLOWED_CATEGORIES, ALLOWED_TAGS, ALLOWED_MODES, LOCATION_TAGS } from "./config.js";
-import { getCommunityById, listCommunities } from "./sqlite-db.js";
+import { getCommunityByIdStore, listCommunitiesStore } from "./community-store.js";
 import {
   attachRequestToRoom,
-  createDirectRoom,
   createRequest,
   findOrCreateTopicRoom,
   listOpenRequestsExcludingUser,
-  listUserRequests,
-  markRequestsMatched
+  listUserRequests
 } from "./store.js";
-import { isGoodMatch, pickBestMatch } from "./matchmaking.js";
+import { computeCandidateScore, isGoodMatch } from "./matchmaking.js";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
 const rooms = new Map();
 const roomSockets = new Map();
+const roomReports = new Map();
 
 function buildHistoryProfile(requests) {
   const categories = new Set();
@@ -42,9 +41,9 @@ function buildHistoryProfile(requests) {
   return { categories, tags };
 }
 
-function inferLocationTagFromText(text) {
+function inferLocationTagsFromText(text) {
   const input = String(text || "").toLowerCase();
-  if (!input) return null;
+  if (!input) return [];
 
   for (const tag of LOCATION_TAGS) {
     const canonicalTag = String(tag || "").trim().toLowerCase();
@@ -52,17 +51,12 @@ function inferLocationTagFromText(text) {
     const escapedPhrase = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const phrasePattern = new RegExp(`\\b${escapedPhrase}\\b`, "i");
     if (phrasePattern.test(input)) {
-      return canonicalTag;
+      const relatedCountry = CITY_TO_COUNTRY_TAG[canonicalTag];
+      return Array.from(new Set([canonicalTag, relatedCountry].filter(Boolean)));
     }
   }
 
-  return null;
-}
-
-function normalizeCommunityId(value) {
-  const candidate = String(value || "").trim();
-  if (!candidate) return "";
-  return getCommunityById(candidate) ? candidate : "";
+  return [];
 }
 
 function ensureRealtimeRoom({ roomId, communityId, roomName }) {
@@ -75,7 +69,7 @@ function ensureRealtimeRoom({ roomId, communityId, roomName }) {
 
   const room = {
     id: normalizedRoomId,
-    communityId: normalizeCommunityId(communityId) || "unassigned",
+    communityId: String(communityId || "unassigned"),
     name: String(roomName || "Community Room").trim() || "Community Room",
     createdAt: new Date().toISOString(),
     participants: new Map(),
@@ -86,6 +80,26 @@ function ensureRealtimeRoom({ roomId, communityId, roomName }) {
   sendRoomEvent("room_created", room);
   return room;
 }
+
+function scoreToPercentage(score) {
+  const maxScore = 105;
+  const normalized = (Number(score || 0) / maxScore) * 100;
+  return Math.max(0, Math.min(99, Math.round(normalized)));
+}
+
+const CITY_TO_COUNTRY_TAG = {
+  edinburgh: "united_kingdom",
+  london: "united_kingdom",
+  glasgow: "united_kingdom",
+  manchester: "united_kingdom",
+  bristol: "united_kingdom",
+  leeds: "united_kingdom",
+  liverpool: "united_kingdom",
+  new_york: "united_states",
+  los_angeles: "united_states",
+  chicago: "united_states",
+  texas: "united_states"
+};
 
 const app = express();
 app.use((req, res, next) => {
@@ -170,13 +184,13 @@ const serializeCommunity = (community) => {
   };
 };
 
-const getSerializedCommunities = () =>
-  listCommunities().map((community) =>
+const getSerializedCommunities = async () =>
+  (await listCommunitiesStore()).map((community) =>
     serializeCommunity({
-      id: String(community.community_id),
+      id: String(community.id),
       name: String(community.name),
-      members: Number(community.members || 0),
-      theme: String(community.theme || "")
+      members: Number(community.members),
+      theme: String(community.theme)
     })
   );
 
@@ -198,6 +212,7 @@ app.get("/", (_req, res) => {
       "/rooms/:roomId",
       "/rooms/:roomId/join",
       "/rooms/:roomId/leave",
+      "/rooms/:roomId/report",
       "/ws"
     ]
   });
@@ -231,7 +246,7 @@ app.post("/post-request", async (req, res) => {
   try {
     const text = String(req.body?.text || "").trim();
     const urgency = String(req.body?.urgency || "").trim();
-    const communityId = normalizeCommunityId(req.body?.communityId || req.body?.community_id);
+    const communityId = String(req.body?.communityId || req.body?.community_id || "").trim();
     const userId = String(req.body?.user_id || req.headers["x-user-id"] || "anonymous").trim();
     console.log("[post-request][step 1] received request", { userId, urgency, communityId });
 
@@ -244,19 +259,22 @@ app.post("/post-request", async (req, res) => {
     if (!userId) {
       return res.status(400).json({ error: "'user_id' is required (or provide x-user-id header)" });
     }
+    if (!communityId || !(await getCommunityByIdStore(communityId))) {
+      return res.status(400).json({ error: "'communityId' is required and must be valid" });
+    }
 
     console.log("[post-request][step 2] classifying intent");
     const intent = await classifyIntent(text);
-    const inferredLocationTag = inferLocationTagFromText(text);
+    const inferredLocationTags = inferLocationTagsFromText(text);
     const mergedTags = Array.from(
-      new Set([...(Array.isArray(intent.tags) ? intent.tags : []), inferredLocationTag].filter(Boolean))
+      new Set([...(Array.isArray(intent.tags) ? intent.tags : []), ...inferredLocationTags].filter(Boolean))
     );
-    const resolvedLocation = inferredLocationTag || null;
-    const firstTag = mergedTags?.[0] || "general";
+    const resolvedLocation = inferredLocationTags[0] || null;
+    const firstTag = [...mergedTags].sort((a, b) => a.localeCompare(b))[0] || "general";
     console.log("[post-request][step 3] classification complete", {
       category: intent.category,
       tags: mergedTags,
-      inferredLocationTag,
+      inferredLocationTags,
       resolvedLocation
     });
 
@@ -286,9 +304,15 @@ app.post("/post-request", async (req, res) => {
       count: openCandidates.length,
       historyCount: requesterHistoryRequests.length
     });
-    const best = pickBestMatch(newRequest, openCandidates, { requesterHistory });
+    const rankedCandidates = openCandidates
+      .map((candidate) => ({
+        candidate,
+        ...computeCandidateScore(newRequest, candidate, { requesterHistory })
+      }))
+      .sort((a, b) => b.score - a.score);
 
-    if (best) {
+    if (rankedCandidates.length > 0) {
+      const best = rankedCandidates[0];
       console.log("[post-request][step 6] best candidate scored", {
         candidateRequestId: String(best.candidate._id),
         score: best.score,
@@ -299,50 +323,47 @@ app.post("/post-request", async (req, res) => {
       console.log("[post-request][step 6] no candidate found");
     }
 
-    if (best && isGoodMatch(best.score)) {
-      const candidateRoomId = String(
-        best.candidate.topic_room_id || best.candidate.room_id || ""
-      ).trim();
+    const candidateRoomById = new Map();
 
-      let resolvedRoomId = candidateRoomId;
-      let matchedIntoExistingRoom = Boolean(candidateRoomId);
+    for (const entry of rankedCandidates) {
+        const roomId = String(entry.candidate.topic_room_id || entry.candidate.room_id || "").trim();
+        if (!roomId) continue;
 
-      if (!resolvedRoomId) {
-        const room = await createDirectRoom({
-          userIds: [newRequest.user_id, best.candidate.user_id],
-          requestIds: [newRequest._id, best.candidate._id],
-          score: best.score,
-          reasons: best.reasons
+        const realtimeRoom = ensureRealtimeRoom({
+          roomId,
+          communityId,
+          roomName: String(entry.candidate.topic_label || intent.topic_label || "Community Room")
         });
-        resolvedRoomId = String(room._id);
-        matchedIntoExistingRoom = false;
-      }
 
-      ensureRealtimeRoom({
-        roomId: resolvedRoomId,
-        communityId,
-        roomName: intent.topic_label
-      });
+        const option = {
+          room_id: roomId,
+          room_title: String(
+            realtimeRoom?.name ||
+            entry.candidate.topic_label ||
+            intent.topic_label ||
+            "Community Room"
+          ),
+          request_id: String(entry.candidate._id),
+          score: entry.score,
+          percentage: scoreToPercentage(entry.score),
+          qualifies: isGoodMatch(entry.score),
+          recommended: false,
+          reasons: entry.reasons,
+          score_breakdown: entry.score_breakdown
+        };
 
-      await markRequestsMatched([newRequest._id, best.candidate._id], resolvedRoomId);
-      console.log("[post-request][step 7] direct match created", {
-        roomId: resolvedRoomId,
-        score: best.score,
-        matchedIntoExistingRoom
-      });
+        const existing = candidateRoomById.get(roomId);
+        if (!existing || option.score > existing.score) {
+          candidateRoomById.set(roomId, option);
+        }
+    }
 
-      return res.json({
-        room_id: resolvedRoomId,
-        score: best.score,
-        reasons: best.reasons,
-        score_breakdown: best.score_breakdown,
-        match_status: "matched",
-        matched_existing_room: matchedIntoExistingRoom,
-        is_creator: false,
-        message: matchedIntoExistingRoom
-          ? "Matched with an existing request. You are assigned to their room."
-          : "Matched successfully. A room is ready."
-      });
+    const candidateRooms = [...candidateRoomById.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+
+    if (candidateRooms.length > 0) {
+      candidateRooms[0].recommended = true;
     }
 
     const topicRoom = await findOrCreateTopicRoom({
@@ -358,21 +379,44 @@ app.post("/post-request", async (req, res) => {
     });
 
     const isCreator = Boolean(topicRoom.created);
+    const qualifyingRooms = candidateRooms.filter((room) => room.qualifies);
+    const closestRoom = candidateRooms.length > 0 ? candidateRooms[0] : null;
     console.log("[post-request][step 7] topic room assigned", {
       roomId: String(topicRoom._id),
       category: intent.category,
       firstTag,
-      isCreator
+      isCreator,
+      qualifyingCount: qualifyingRooms.length
     });
+
+    if (qualifyingRooms.length > 0) {
+      return res.json({
+        room_id: String(qualifyingRooms[0].room_id),
+        waiting_room_id: String(topicRoom._id),
+        match_status: "candidates",
+        has_qualifying_match: true,
+        is_creator: isCreator,
+        candidate_rooms: qualifyingRooms,
+        closest_room: qualifyingRooms[0],
+        message:
+          "Found qualifying rooms. Best option is marked as recommended, but you can choose any."
+      });
+    }
 
     return res.json({
       room_id: String(topicRoom._id),
+      waiting_room_id: String(topicRoom._id),
       match_status: "waiting",
+      has_qualifying_match: false,
       matched_existing_room: false,
       is_creator: isCreator,
-      message: isCreator
-        ? "No match found yet. You created this room and are now waiting for peers."
-        : "No direct match yet. You were added to an existing room waiting for peers."
+      candidate_rooms: [],
+      closest_room: closestRoom,
+      message: closestRoom
+        ? "No qualifying match found. We created a room for you, and included the closest option."
+        : isCreator
+          ? "No match found yet. We created a room for you and you're now waiting for someone to join."
+          : "No direct match yet. You were added to a waiting room."
     });
   } catch (error) {
     console.error("post-request error", error);
@@ -380,13 +424,13 @@ app.post("/post-request", async (req, res) => {
   }
 });
 
-app.get("/communities", (_req, res) => {
-  res.json({ communities: getSerializedCommunities() });
+app.get("/communities", async (_req, res) => {
+  res.json({ communities: await getSerializedCommunities() });
 });
 
-app.get("/communities/:communityId/rooms", (req, res) => {
+app.get("/communities/:communityId/rooms", async (req, res) => {
   const { communityId } = req.params;
-  if (!getCommunityById(communityId)) {
+  if (!(await getCommunityByIdStore(communityId))) {
     return res.status(404).json({ error: "Community not found" });
   }
 
@@ -397,9 +441,9 @@ app.get("/communities/:communityId/rooms", (req, res) => {
   return res.json({ rooms: communityRooms });
 });
 
-app.post("/rooms", (req, res) => {
+app.post("/rooms", async (req, res) => {
   const { communityId, name } = req.body || {};
-  if (!getCommunityById(communityId)) {
+  if (!(await getCommunityByIdStore(communityId))) {
     return res.status(400).json({ error: "Invalid communityId" });
   }
 
@@ -433,12 +477,16 @@ app.post("/rooms/:roomId/join", (req, res) => {
     return res.status(404).json({ error: "Room not found" });
   }
 
-  const displayName =
+  const requestedDisplayName =
     typeof req.body?.displayName === "string" && req.body.displayName.trim()
       ? req.body.displayName.trim()
       : "Guest";
 
   const participantId = crypto.randomUUID();
+  const isAnonymous = /^anonymous$/i.test(requestedDisplayName);
+  const displayName = isAnonymous
+    ? `Anonymous-${participantId.slice(0, 4).toUpperCase()}`
+    : requestedDisplayName;
   const participant = {
     id: participantId,
     displayName,
@@ -464,6 +512,7 @@ app.post("/rooms/:roomId/leave", (req, res) => {
   room.participants.delete(participantId);
   if (room.participants.size === 0) {
     rooms.delete(room.id);
+    roomReports.delete(room.id);
     sendRoomDeletedEvent(room.id);
     if (roomSockets.has(room.id)) {
       roomSockets.delete(room.id);
@@ -475,13 +524,45 @@ app.post("/rooms/:roomId/leave", (req, res) => {
   return res.json({ roomDeleted: false, room: serializeRoom(room) });
 });
 
+app.post("/rooms/:roomId/report", (req, res) => {
+  const room = rooms.get(req.params.roomId);
+  if (!room) {
+    return res.status(404).json({ error: "Room not found" });
+  }
+
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const details = typeof req.body?.details === "string" ? req.body.details.trim() : "";
+  const participantId =
+    typeof req.body?.participantId === "string" ? req.body.participantId.trim() : "";
+
+  if (!reason) {
+    return res.status(400).json({ error: "'reason' is required" });
+  }
+
+  const report = {
+    id: crypto.randomUUID(),
+    roomId: room.id,
+    participantId: participantId || null,
+    reason,
+    details: details || null,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!roomReports.has(room.id)) {
+    roomReports.set(room.id, []);
+  }
+  roomReports.get(room.id).push(report);
+
+  return res.status(201).json({ ok: true, report });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
 
-wss.on("connection", (socket) => {
+wss.on("connection", async (socket) => {
   const snapshot = {
     type: "snapshot",
-    communities: getSerializedCommunities(),
+    communities: await getSerializedCommunities(),
     rooms: Array.from(rooms.values()).map(serializeRoom)
   };
   socket.send(JSON.stringify(snapshot));

@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+const LAN_BACKEND_URL = 'http://192.168.3.1:4000';
+
 export const API_BASE_URL = (() => {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (fromEnv) {
@@ -8,16 +10,12 @@ export const API_BASE_URL = (() => {
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:4000';
+      return LAN_BACKEND_URL;
     }
     return `${window.location.protocol}//${window.location.hostname}:4000`;
   }
 
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:4000';
-  }
-
-  return 'http://localhost:4000';
+  return LAN_BACKEND_URL;
 })();
 
 export const requestJson = async (path: string, options: RequestInit = {}) => {

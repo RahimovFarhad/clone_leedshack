@@ -56,3 +56,7 @@ Default base URL: `http://localhost:4000`
 - Room/community data is in-memory and resets on restart.
 - Matchmaking/request persistence uses the configured DB provider (SQLite by default).
 - `POST /post-request` derives location from request text only when a clear location phrase is detected, and returns `score_breakdown` for direct matches.
+- `POST /post-request` now returns ranked room options:
+  - `candidate_rooms`: qualifying rooms with `percentage` and `recommended`
+  - `match_status`: `candidates` when qualifying rooms exist, otherwise `waiting`
+  - `closest_room`: returned when no qualifying room exists

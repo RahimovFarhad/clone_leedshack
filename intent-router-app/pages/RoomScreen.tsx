@@ -13,6 +13,11 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDetails, setReportDetails] = useState('');
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [reportSuccess, setReportSuccess] = useState('');
   const [isLeaving, setIsLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState('');
   const [sendError, setSendError] = useState('');
@@ -166,6 +171,38 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
     }
   };
 
+  const handleSubmitReport = async () => {
+    if (!sessionData.roomId) {
+      setReportError('Missing room information.');
+      return;
+    }
+    if (!reportReason.trim()) {
+      setReportError('Please select a report reason.');
+      return;
+    }
+
+    try {
+      setIsReporting(true);
+      setReportError('');
+      await requestJson(`/rooms/${sessionData.roomId}/report`, {
+        method: 'POST',
+        body: JSON.stringify({
+          participantId: sessionData.participantId || null,
+          reason: reportReason.trim(),
+          details: reportDetails.trim(),
+        }),
+      });
+      setShowReport(false);
+      setReportReason('');
+      setReportDetails('');
+      setReportSuccess('Report submitted. Thank you.');
+    } catch (_error: any) {
+      setReportError('Unable to submit report.');
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
   return (
     <View className="flex-1 bg-slate-50">
       {/* Header */}
@@ -224,14 +261,6 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
       <View className="bg-white border-t-2 border-slate-100 px-4 py-3">
         <View className="flex-row gap-2 mb-3">
           <TouchableOpacity
-            onPress={() => navigate('reveal')}
-            className="flex-1 bg-blue-50 py-3 rounded-lg border border-blue-200"
-          >
-            <Text className="text-blue-600 text-center font-semibold text-sm">
-              Reveal Identity
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={handleLeaveRoom}
             disabled={isLeaving}
             className={`flex-1 py-3 rounded-lg border ${
@@ -243,7 +272,11 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setShowReport(true)}
+            onPress={() => {
+              setReportError('');
+              setReportSuccess('');
+              setShowReport(true);
+            }}
             className="bg-red-50 px-4 py-3 rounded-lg border border-red-200"
           >
             <Text className="text-red-600 text-center font-semibold text-sm">
@@ -282,6 +315,12 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
         </View>
       ) : null}
 
+      {reportSuccess ? (
+        <View className="px-6 pb-3">
+          <Text className="text-emerald-700 text-sm text-center">{reportSuccess}</Text>
+        </View>
+      ) : null}
+
       {/* Report Modal */}
       {showReport && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center px-6">
@@ -296,15 +335,45 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
               {['Inappropriate content', 'Harassment', 'Spam', 'Other'].map(reason => (
                 <TouchableOpacity
                   key={reason}
-                  className="bg-slate-50 py-3 px-4 rounded-lg border border-slate-200"
+                  onPress={() => {
+                    setReportReason(reason);
+                    setReportError('');
+                  }}
+                  className={`py-3 px-4 rounded-lg border ${
+                    reportReason === reason
+                      ? 'bg-red-50 border-red-300'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}
                 >
-                  <Text className="text-slate-700">{reason}</Text>
+                  <Text
+                    className={`${
+                      reportReason === reason ? 'text-red-700 font-semibold' : 'text-slate-700'
+                    }`}
+                  >
+                    {reason}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
+            <TextInput
+              value={reportDetails}
+              onChangeText={setReportDetails}
+              multiline
+              numberOfLines={3}
+              className="bg-slate-100 rounded-xl px-4 py-3 text-base text-slate-900 mb-4"
+              placeholder="Additional details (optional)"
+              placeholderTextColor="#94a3b8"
+              textAlignVertical="top"
+            />
+            {reportError ? (
+              <Text className="text-red-600 text-sm mb-3">{reportError}</Text>
+            ) : null}
             <View className="flex-row gap-3">
               <TouchableOpacity
-                onPress={() => setShowReport(false)}
+                onPress={() => {
+                  setShowReport(false);
+                  setReportError('');
+                }}
                 className="flex-1 bg-slate-100 py-3 rounded-lg"
               >
                 <Text className="text-slate-700 text-center font-semibold">
@@ -312,14 +381,14 @@ const RoomScreen = ({ navigate, sessionData, setSessionData }: RoomScreenProps) 
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  setShowReport(false);
-                  // Handle report submission
-                }}
-                className="flex-1 bg-red-600 py-3 rounded-lg"
+                onPress={handleSubmitReport}
+                disabled={isReporting}
+                className={`flex-1 py-3 rounded-lg ${
+                  isReporting ? 'bg-red-300' : 'bg-red-600'
+                }`}
               >
                 <Text className="text-white text-center font-semibold">
-                  Submit
+                  {isReporting ? 'Submitting...' : 'Submit'}
                 </Text>
               </TouchableOpacity>
             </View>

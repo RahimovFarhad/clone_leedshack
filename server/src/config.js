@@ -130,8 +130,8 @@ export const CLOUDFLARE_MODEL =
   process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-70b-instruct";
 
 export const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://your_mongo_uri_here/intent_router";
-export const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "intent_router";
+  process.env.MONGODB_URI || "mongodb://your_mongo_uri_here/intent-router";
+export const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "intent-router";
 export const DB_PROVIDER = (process.env.DB_PROVIDER || "sqlite").toLowerCase();
 export const SQLITE_DB_PATH = process.env.SQLITE_DB_PATH || "data/data.db";
 
